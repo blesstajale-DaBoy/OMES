@@ -1,0 +1,8 @@
+{
+  "name": "Barobo NHS - Online Monitoring and Evaluation System (OMES)",
+  "description": "Comprehensive instructional supervision, teacher monitoring, classroom observations (COT-PMES), lesson plan checking, and DepEd reporting system for Barobo National High School.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

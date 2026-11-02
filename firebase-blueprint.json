@@ -1,0 +1,104 @@
+{
+  "entities": {
+    "Teacher": {
+      "title": "Teacher",
+      "description": "Faculty member or teaching personnel record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier" },
+        "employeeId": { "type": "string", "description": "DepEd Employee ID" },
+        "fullName": { "type": "string", "description": "Full name of the teacher" },
+        "position": { "type": "string", "description": "DepEd rank or position" },
+        "department": { "type": "string", "description": "School department" },
+        "subject": { "type": "string", "description": "Specialization or subject taught" },
+        "gradeLevels": { "type": "array", "description": "Grade levels assigned" },
+        "assignedSupervisorId": { "type": "string", "description": "Assigned instructional supervisor ID" },
+        "email": { "type": "string", "description": "Official email address" },
+        "status": { "type": "string", "description": "Employment status" },
+        "observationsCompleted": { "type": "number", "description": "Number of completed COTs" },
+        "lastObservationDate": { "type": "string", "description": "Date of latest observation" }
+      },
+      "required": ["id", "fullName", "position", "department"]
+    },
+    "Supervisor": {
+      "title": "Supervisor",
+      "description": "Instructional supervisor or school head record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique supervisor identifier" },
+        "employeeId": { "type": "string", "description": "DepEd Employee ID" },
+        "fullName": { "type": "string", "description": "Full name" },
+        "position": { "type": "string", "description": "Official supervisor position" },
+        "department": { "type": "string", "description": "Department or office" },
+        "email": { "type": "string", "description": "Email address" },
+        "phone": { "type": "string", "description": "Contact number" },
+        "assignedTeacherIds": { "type": "array", "description": "Array of assigned mentee teacher IDs" },
+        "totalObservationsThisTerm": { "type": "number", "description": "Total observations conducted" },
+        "driveUrl": { "type": "string", "description": "Google Drive folder link" }
+      },
+      "required": ["id", "fullName", "position", "department"]
+    },
+    "Observation": {
+      "title": "Observation",
+      "description": "Classroom Observation Tool (COT) rating record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Observation ID" },
+        "observationNo": { "type": "string", "description": "COT tracking code" },
+        "teacherId": { "type": "string", "description": "Observed teacher ID" },
+        "teacherName": { "type": "string", "description": "Teacher full name" },
+        "department": { "type": "string", "description": "Department" },
+        "supervisorId": { "type": "string", "description": "Observer ID" },
+        "supervisorName": { "type": "string", "description": "Observer full name" },
+        "date": { "type": "string", "description": "Observation date" },
+        "timeStart": { "type": "string", "description": "Start time" },
+        "timeEnd": { "type": "string", "description": "End time" },
+        "quarterTerm": { "type": "string", "description": "Quarter / Term" },
+        "schoolYear": { "type": "string", "description": "School Year" },
+        "gradeAndSection": { "type": "string", "description": "Grade and Section" },
+        "subjectTaught": { "type": "string", "description": "Subject taught" },
+        "topicTitle": { "type": "string", "description": "Lesson topic" },
+        "averageScore": { "type": "number", "description": "Calculated average score" },
+        "overallRating": { "type": "string", "description": "Overall RPMS rating" },
+        "status": { "type": "string", "description": "Observation status" }
+      },
+      "required": ["id", "teacherId", "supervisorId", "date"]
+    },
+    "SchoolProfile": {
+      "title": "SchoolProfile",
+      "description": "School profile and institutional configuration",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string", "description": "Name of the school" },
+        "schoolId": { "type": "string", "description": "DepEd School ID" },
+        "region": { "type": "string", "description": "DepEd Region" },
+        "division": { "type": "string", "description": "Schools Division" },
+        "district": { "type": "string", "description": "District" },
+        "address": { "type": "string", "description": "School physical address" },
+        "principalName": { "type": "string", "description": "School Principal full name" },
+        "principalTitle": { "type": "string", "description": "Principal title / position" },
+        "currentSchoolYear": { "type": "string", "description": "Current school year" },
+        "currentTerm": { "type": "string", "description": "Current academic term" }
+      },
+      "required": ["schoolName", "schoolId"]
+    }
+  },
+  "firestore": {
+    "/teachers/{teacherId}": {
+      "schema": "Teacher",
+      "description": "Collection of teaching personnel and Master Teachers"
+    },
+    "/supervisors/{supervisorId}": {
+      "schema": "Supervisor",
+      "description": "Collection of instructional supervisors and School Principal"
+    },
+    "/observations/{observationId}": {
+      "schema": "Observation",
+      "description": "Collection of classroom observation records (COT)"
+    },
+    "/schoolProfile/{profileId}": {
+      "schema": "SchoolProfile",
+      "description": "Institutional configuration for Barobo National High School"
+    }
+  }
+}
