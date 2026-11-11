@@ -34,7 +34,7 @@ const MainApp: React.FC = () => {
   const selectedObservation = observations.find((o) => o.id === selectedObservationIdForPrint) || null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-stone-100 text-stone-900 font-sans selection:bg-[#701628] selection:text-white">
+    <div className="min-h-screen flex flex-col bg-stone-100 text-stone-900 font-sans selection:bg-[#701628] selection:text-white overflow-x-hidden w-full">
       {/* Maroon Navigation Header */}
       <Header
         activeTab={activeTab}
@@ -48,7 +48,7 @@ const MainApp: React.FC = () => {
       <SchoolBanner />
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
+      <main className="flex-1 max-w-7xl 2xl:max-w-[1536px] w-full mx-auto px-2.5 sm:px-4 lg:px-6 py-4 sm:py-6">
         {activeTab === 'dashboard' && (
           <DashboardView
             onNavigate={setActiveTab}
@@ -75,8 +75,8 @@ const MainApp: React.FC = () => {
       </main>
 
       {/* Formal DepEd Footer */}
-      <footer className="bg-[#4d0c18] border-t border-amber-500/20 text-amber-100/80 py-8 px-4 sm:px-6 mt-12 text-xs">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+      <footer className="bg-[#4d0c18] border-t border-amber-500/20 text-amber-100/80 py-6 sm:py-8 px-3 sm:px-6 mt-10 sm:mt-12 text-xs">
+        <div className="max-w-7xl 2xl:max-w-[1536px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
           <div className="space-y-1">
             <div className="text-sm font-bold text-white tracking-wide">
               {schoolProfile.schoolName.toUpperCase()} · OMES PORTAL

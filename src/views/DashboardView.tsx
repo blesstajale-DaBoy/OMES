@@ -384,7 +384,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
       {/* 4 High-Density Key Indicator Metric Tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Tile 1 */}
         <div className="bg-white rounded-xl border border-stone-200 p-4 shadow-xs">
           <div className="flex items-center justify-between text-stone-500 mb-2">
@@ -501,7 +501,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       )}
 
       {/* Recharts Monthly Volume of Completed Classroom Observations */}
-      <div className="bg-white rounded-xl border border-stone-200 p-5 sm:p-6 shadow-xs">
+      <div className="bg-white rounded-xl border border-stone-200 p-3.5 sm:p-5 lg:p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-stone-100">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-[#701628] uppercase tracking-wider">
@@ -566,7 +566,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Summary KPI Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 my-3 sm:my-4">
           <div className="p-3 rounded-lg bg-stone-50 border border-stone-200/80">
             <div className="text-[11px] font-medium text-stone-500">Total Completed Visits</div>
             <div className="text-xl font-bold font-mono text-stone-900 tabular-nums mt-0.5">
@@ -597,12 +597,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
 
         {/* Recharts Canvas */}
-        <div className="h-72 w-full pt-2">
+        <div className="h-64 sm:h-72 w-full pt-2">
           <ResponsiveContainer width="100%" height="100%">
             {monthlyChartMode === 'bar' ? (
               <BarChart
                 data={monthlyObservationChartData}
-                margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+                margin={{ top: 10, right: 12, left: -16, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
                 <XAxis
@@ -664,7 +664,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             ) : (
               <AreaChart
                 data={monthlyObservationChartData}
-                margin={{ top: 10, right: 20, left: 0, bottom: 5 }}
+                margin={{ top: 10, right: 12, left: -16, bottom: 5 }}
               >
                 <defs>
                   <linearGradient id="completedObsGradient" x1="0" y1="0" x2="0" y2="1">

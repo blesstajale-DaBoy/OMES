@@ -180,11 +180,33 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Primary Top Bar */}
       <div className="w-full mx-auto px-2 sm:px-3 lg:px-4 xl:px-6">
         <div className="flex items-center justify-between h-14 sm:h-15 gap-1 xl:gap-2">
-          {/* Left Scroll Arrow (shows if content overflows on smaller screens) */}
+          {/* Mobile Brand Mark (Phone screens < md) */}
+          <div className="flex md:hidden items-center gap-2 shrink-0 py-1">
+            <div className="w-8 h-8 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center font-extrabold shadow-sm border border-amber-300 shrink-0">
+              <GraduationCap className="w-4 h-4 text-stone-950" />
+            </div>
+            <div className="leading-tight">
+              <div className="text-xs font-bold text-amber-200 tracking-tight">BNHS · OMES</div>
+              <div className="text-[9px] text-amber-300/80 font-medium">DepEd Portal</div>
+            </div>
+          </div>
+
+          {/* Desktop & Tablet Brand Wordmark */}
+          <div className="hidden md:flex items-center gap-2 shrink-0 mr-1 lg:mr-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center font-extrabold text-xs shadow-xs border border-amber-300 shrink-0">
+              <GraduationCap className="w-4 h-4 text-stone-950" />
+            </div>
+            <div className="leading-tight hidden xl:block">
+              <div className="text-xs font-bold text-amber-200 tracking-tight whitespace-nowrap">BNHS · OMES</div>
+              <div className="text-[9px] text-amber-300/75 font-medium whitespace-nowrap">DepEd Supervision</div>
+            </div>
+          </div>
+
+          {/* Left Scroll Arrow (shows on tablet/desktop if tabs overflow) */}
           {canScrollLeft && (
             <button
               onClick={() => handleScroll('left')}
-              className="flex items-center justify-center w-6 h-7 rounded-lg bg-black/50 hover:bg-black/75 text-amber-300 hover:text-amber-200 border border-amber-400/40 hover:border-amber-400 transition-all shrink-0 shadow-sm cursor-pointer z-10 active:scale-95"
+              className="hidden md:flex items-center justify-center w-6 h-7 rounded-lg bg-black/50 hover:bg-black/75 text-amber-300 hover:text-amber-200 border border-amber-400/40 hover:border-amber-400 transition-all shrink-0 shadow-sm cursor-pointer z-10 active:scale-95"
               title="Scroll menus left"
               aria-label="Scroll left"
             >
@@ -192,10 +214,10 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Navigation Links occupying the horizontal space with all 9 menus visible on desktop & laptop */}
+          {/* Navigation Links: Visible on Tablet, Laptop, and Desktop */}
           <div
             ref={navScrollRef}
-            className="flex-1 flex items-center justify-start lg:justify-center gap-1 sm:gap-1 lg:gap-1 xl:gap-1.5 2xl:gap-2 overflow-x-auto py-1 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="hidden md:flex flex-1 items-center justify-start lg:justify-center gap-1 sm:gap-1 lg:gap-1 xl:gap-1.5 2xl:gap-2 overflow-x-auto py-1 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
           >
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -237,11 +259,11 @@ export const Header: React.FC<HeaderProps> = ({
             })}
           </div>
 
-          {/* Right Scroll Arrow (shows if content overflows) */}
+          {/* Right Scroll Arrow (shows if content overflows on tablet/desktop) */}
           {canScrollRight && (
             <button
               onClick={() => handleScroll('right')}
-              className="flex items-center justify-center w-6 h-7 rounded-lg bg-black/50 hover:bg-black/75 text-amber-300 hover:text-amber-200 border border-amber-400/40 hover:border-amber-400 transition-all shrink-0 shadow-sm cursor-pointer z-10 active:scale-95"
+              className="hidden md:flex items-center justify-center w-6 h-7 rounded-lg bg-black/50 hover:bg-black/75 text-amber-300 hover:text-amber-200 border border-amber-400/40 hover:border-amber-400 transition-all shrink-0 shadow-sm cursor-pointer z-10 active:scale-95"
               title="Scroll menus right"
               aria-label="Scroll right"
             >
@@ -305,7 +327,7 @@ export const Header: React.FC<HeaderProps> = ({
 
               {isNotifDropdownOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden z-50 text-stone-800 animate-in fade-in slide-in-from-top-2 duration-150"
+                  className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] sm:w-96 max-w-sm sm:max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden z-50 text-stone-800 animate-in fade-in slide-in-from-top-2 duration-150"
                   onMouseLeave={() => setIsNotifDropdownOpen(false)}
                 >
                   <div className="px-4 py-3 bg-[#701628] text-white flex items-center justify-between border-b border-amber-500/20">
@@ -488,7 +510,7 @@ export const Header: React.FC<HeaderProps> = ({
               {/* Role & Account Dropdown with Vertical Scrollbar */}
               {isRoleDropdownOpen && (
                 <div
-                  className="absolute right-0 mt-2 w-80 sm:w-84 max-h-[calc(100vh-4.5rem)] overflow-y-auto overscroll-contain bg-white rounded-2xl shadow-2xl border border-stone-200 py-2 z-50 text-stone-800 animate-in fade-in slide-in-from-top-2 duration-150 [scrollbar-width:thin]"
+                  className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] sm:w-84 max-w-sm max-h-[calc(100vh-4.5rem)] overflow-y-auto overscroll-contain bg-white rounded-2xl shadow-2xl border border-stone-200 py-2 z-50 text-stone-800 animate-in fade-in slide-in-from-top-2 duration-150 [scrollbar-width:thin]"
                 >
                   <div className="px-4 py-2.5 border-b border-stone-100 bg-stone-50/90 sticky top-0 z-10 flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -858,7 +880,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Live Real-Time Toast Banner when a new Observation is Scheduled or Lesson Plan is Verified */}
       {activeToastNotif && (
-        <div className="fixed bottom-5 right-5 z-50 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border-2 border-[#701628] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-3 sm:bottom-5 right-3 sm:right-5 z-50 w-[calc(100vw-1.5rem)] sm:w-96 max-w-sm sm:max-w-md bg-white rounded-2xl shadow-2xl border-2 border-[#701628] overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
           <div className="bg-[#701628] px-4 py-2 text-white flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-bold">
               <Bell className="w-3.5 h-3.5 text-amber-300" />

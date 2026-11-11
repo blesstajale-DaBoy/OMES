@@ -72,9 +72,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden">
-        <div className="bg-[#701628] px-6 py-4 text-white flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="bg-[#701628] px-5 sm:px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <KeyRound className="w-5 h-5 text-amber-300" />
             <div>
@@ -82,12 +82,12 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
               <p className="text-xs text-amber-200/80">{currentUser.fullName}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded-lg text-amber-200 hover:text-white">
+          <button onClick={onClose} className="p-1 rounded-lg text-amber-200 hover:text-white cursor-pointer">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 text-xs">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
           {errorMsg && (
             <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg font-medium">
               {errorMsg}

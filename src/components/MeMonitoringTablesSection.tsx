@@ -1405,7 +1405,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
           TOP WORKFLOW BAR: SWITCH BETWEEN SUPERVISOR ENCODING & ADMIN CONSOLIDATION
       ============================================================================ */}
       <div className="bg-white rounded-xl border border-stone-200 shadow-xs overflow-hidden">
-        <div className="bg-gradient-to-r from-[#701628] via-[#580e1c] to-stone-900 px-5 py-4 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-[#701628] via-[#580e1c] to-stone-900 px-3.5 sm:px-5 py-3.5 sm:py-4 text-white flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400 text-stone-950">

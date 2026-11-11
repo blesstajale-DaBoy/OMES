@@ -673,7 +673,7 @@ export const ReportsLinksView: React.FC = () => {
       )}
 
       {/* Header */}
-      <div className="flex flex-col gap-4 bg-white p-5 rounded-xl border border-stone-200 shadow-xs">
+      <div className="flex flex-col gap-4 bg-white p-3.5 sm:p-5 rounded-xl border border-stone-200 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 text-xs font-semibold text-[#701628] uppercase tracking-wider">
@@ -681,7 +681,7 @@ export const ReportsLinksView: React.FC = () => {
               <span aria-hidden="true">·</span>
               <span>Term 1, Term 2 & Term 3 Consolidations</span>
             </div>
-            <h2 className="text-xl font-bold text-stone-900 mt-1">
+            <h2 className="text-lg sm:text-xl font-bold text-stone-900 mt-1">
               Supervisory Reports, CSV Exports & Google Drive Resources
             </h2>
             <p className="text-xs text-stone-600 mt-0.5">
@@ -689,7 +689,7 @@ export const ReportsLinksView: React.FC = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {activeTab === 'resources' && (
               <button
                 onClick={handleOpenAddModal}
@@ -712,7 +712,7 @@ export const ReportsLinksView: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-stone-200 bg-white px-5 rounded-t-xl gap-6 text-xs font-bold">
+      <div className="flex border-b border-stone-200 bg-white px-3 sm:px-5 rounded-t-xl gap-4 sm:gap-6 text-xs font-bold overflow-x-auto [scrollbar-width:none]">
         <button
           onClick={() => setActiveTab('term-reports')}
           className={`py-3 border-b-2 transition-colors ${

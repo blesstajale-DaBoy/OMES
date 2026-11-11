@@ -876,7 +876,7 @@ export const DashboardCalendarWidget: React.FC<DashboardCalendarWidgetProps> = (
       {/* Main 2-Column Split: Calendar Matrix on Left, Agenda on Right */}
       <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-stone-100">
         {/* Left Side: Calendar Month View (8 cols for spacious date cells) */}
-        <div className="lg:col-span-8 p-4 sm:p-5 flex flex-col justify-between space-y-4">
+        <div className="lg:col-span-8 p-2.5 sm:p-4 lg:p-5 flex flex-col justify-between space-y-4">
           <div>
             {/* Month & Year Navigation Bar */}
             <div className="flex items-center justify-between mb-4">
@@ -918,7 +918,7 @@ export const DashboardCalendarWidget: React.FC<DashboardCalendarWidgetProps> = (
             </div>
 
             {/* Weekday Header */}
-            <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-2">
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] sm:text-[11px] font-bold text-stone-400 uppercase tracking-wider mb-2">
               <span className="text-rose-700/80">Sun</span>
               <span>Mon</span>
               <span>Tue</span>
@@ -940,16 +940,16 @@ export const DashboardCalendarWidget: React.FC<DashboardCalendarWidgetProps> = (
                     key={`${dayItem.dateStr}-${idx}`}
                     type="button"
                     onClick={() => setSelectedDate(dayItem.dateStr)}
-                    className={`group relative min-h-[76px] sm:min-h-[86px] xl:min-h-[92px] p-1 sm:p-1.5 rounded-xl text-left transition-all flex flex-col justify-between border cursor-pointer overflow-hidden ${
-                      isSelected
-                        ? 'border-[#701628] bg-rose-50/50 shadow-xs ring-2 ring-[#701628]/40'
-                        : hasOverdueDeadline
-                        ? 'border-rose-400 bg-rose-50/35 hover:bg-rose-50/60 ring-1 ring-rose-300/70'
-                        : dayItem.hasEvents
-                        ? 'border-stone-200/90 bg-white hover:bg-stone-50 hover:border-amber-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
-                        : 'border-stone-100 bg-stone-50/20 hover:bg-white hover:border-stone-200'
-                    } ${!dayItem.isCurrentMonth ? 'opacity-35 text-stone-400 bg-stone-100/30' : 'text-stone-800'}`}
-                  >
+                    className={`group relative min-h-[60px] sm:min-h-[82px] xl:min-h-[92px] p-0.5 sm:p-1.5 rounded-lg sm:rounded-xl text-left transition-all flex flex-col justify-between border cursor-pointer overflow-hidden ${
+                    isSelected
+                      ? 'border-[#701628] bg-rose-50/50 shadow-xs ring-2 ring-[#701628]/40'
+                      : hasOverdueDeadline
+                      ? 'border-rose-400 bg-rose-50/35 hover:bg-rose-50/60 ring-1 ring-rose-300/70'
+                      : dayItem.hasEvents
+                      ? 'border-stone-200/90 bg-white hover:bg-stone-50 hover:border-amber-400/80 shadow-[0_1px_2px_rgba(0,0,0,0.03)]'
+                      : 'border-stone-100 bg-stone-50/20 hover:bg-white hover:border-stone-200'
+                  } ${!dayItem.isCurrentMonth ? 'opacity-35 text-stone-400 bg-stone-100/30' : 'text-stone-800'}`}
+                >
                     {/* Top Row: Date Number and Overdue / Count Badge */}
                     <div className="flex items-center justify-between w-full mb-0.5">
                       <span

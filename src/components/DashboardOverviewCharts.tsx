@@ -560,7 +560,7 @@ export const DashboardOverviewCharts: React.FC<DashboardOverviewChartsProps> = (
       )}
 
       {/* Widget Header */}
-      <div className="p-5 sm:p-6 bg-gradient-to-r from-stone-900 via-stone-800 to-[#701628] text-white flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-amber-500/20">
+      <div className="p-3.5 sm:p-5 lg:p-6 bg-gradient-to-r from-stone-900 via-stone-800 to-[#701628] text-white flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-amber-500/20">
         <div>
           <div className="flex items-center gap-2 text-[10px] uppercase font-bold tracking-wider text-amber-300">
             <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
@@ -713,12 +713,12 @@ export const DashboardOverviewCharts: React.FC<DashboardOverviewChartsProps> = (
       </div>
 
       {/* Visual Charts Display Section */}
-      <div className="p-5 sm:p-6 space-y-6">
+      <div className="p-3.5 sm:p-5 lg:p-6 space-y-4 sm:space-y-6">
         {/* VIEW 1: All 3 Pillars (Side-by-side D3 Donut Charts + Comparative Bar) */}
         {activeMetricTab === 'all' && (
-          <div className="space-y-6 animate-in fade-in duration-150">
+          <div className="space-y-4 sm:space-y-6 animate-in fade-in duration-150">
             {/* Top row: 3 Specialized D3 Donut/Ring Visualizations */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-5">
               {/* Chart Panel 1: Lesson Plans Submitted */}
               <div className="bg-stone-50/60 rounded-xl border border-stone-200 p-4 flex flex-col justify-between hover:border-emerald-300 transition-colors">
                 <div className="flex items-center justify-between mb-2">

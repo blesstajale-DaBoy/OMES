@@ -649,7 +649,7 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
   return (
     <div className="bg-white rounded-xl border border-stone-200 shadow-xs overflow-hidden">
       {/* Top Banner Header */}
-      <div className="bg-gradient-to-r from-[#701628] via-[#580e1c] to-stone-900 px-5 py-4 text-white flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-[#701628] via-[#580e1c] to-stone-900 px-3.5 sm:px-5 py-3.5 sm:py-4 text-white flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400 text-stone-950">
@@ -709,7 +709,7 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
       </div>
 
       {/* Tool Filter Pill Bar + 4 Summary Cards */}
-      <div className="p-5 bg-stone-50/70 border-b border-stone-200 space-y-4">
+      <div className="p-3.5 sm:p-5 bg-stone-50/70 border-b border-stone-200 space-y-3 sm:space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-1.5">
             <button
@@ -906,12 +906,12 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
                 </div>
 
                 {/* Recharts Bar Graph */}
-                <div className="p-4">
-                  <div className="h-72 w-full">
+                <div className="p-2.5 sm:p-4">
+                  <div className="h-64 sm:h-72 w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={chartData}
-                        margin={{ top: 10, right: 16, left: -8, bottom: 8 }}
+                        margin={{ top: 10, right: 12, left: -16, bottom: 8 }}
                       >
                         <CartesianGrid strokeDasharray="3 3" stroke="#e7e5e4" vertical={false} />
                         <XAxis
@@ -1028,8 +1028,8 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
                         E % = Evident Percentage across all Supervisors
                       </span>
                     </div>
-                    <div className="max-h-52 overflow-y-auto border border-stone-200 rounded-lg">
-                      <table className="w-full text-left text-[11px] border-collapse">
+                    <div className="max-h-52 overflow-y-auto overflow-x-auto border border-stone-200 rounded-lg">
+                      <table className="w-full min-w-[480px] text-left text-[11px] border-collapse">
                         <thead className="bg-stone-100 text-stone-700 sticky top-0">
                           <tr>
                             <th className="py-1.5 px-2.5 border-b border-stone-200 font-bold w-20">

@@ -88,8 +88,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden max-h-[92vh] flex flex-col">
         {/* Header */}
         <div className="bg-[#701628] px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -164,7 +164,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {errorMsg && (
             <div className="p-3 text-xs bg-rose-50 border border-rose-200 text-rose-700 rounded-lg font-medium">
               {errorMsg}
