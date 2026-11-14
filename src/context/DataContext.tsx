@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { useAuth } from './AuthContext';
 import {
   SchoolProfile,
   Teacher,
@@ -157,6 +158,7 @@ const loadFromStorage = <T,>(key: string, fallback: T): T => {
 };
 
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser } = useAuth();
   const [schoolProfile, setSchoolProfile] = useState<SchoolProfile>(() =>
     loadFromStorage('school_profile', INITIAL_SCHOOL_PROFILE)
   );
@@ -507,22 +509,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ]);
 
   const getActor = () => {
-    try {
-      const saved = localStorage.getItem('bnhs_omes_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.fullName) {
-          return {
-            id: (parsed.id || '') as string,
-            mentorId: (parsed.mentorId || '') as string,
-            supervisorId: (parsed.supervisorId || '') as string,
-            name: parsed.fullName as string,
-            role: (parsed.role || 'admin') as 'admin' | 'supervisor' | 'mentor' | 'teacher',
-          };
-        }
-      }
-    } catch {
-      // fallback
+    if (currentUser?.fullName) {
+      return {
+        id: (currentUser.id || '') as string,
+        mentorId: (currentUser.mentorId || '') as string,
+        supervisorId: (currentUser.supervisorId || '') as string,
+        name: currentUser.fullName as string,
+        role: (currentUser.role || 'admin') as 'admin' | 'supervisor' | 'mentor' | 'teacher',
+      };
     }
     return { id: 'user-admin', mentorId: '', supervisorId: '', name: 'Administrator', role: 'admin' as const };
   };

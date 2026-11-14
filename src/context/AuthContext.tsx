@@ -30,31 +30,16 @@ const ADMIN_USER: User = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
+  // Always start unauthenticated on portal load so the Login Workspace gate is displayed automatically
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('bnhs_omes_current_user');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.role) {
-          if (parsed.role === 'admin' && parsed.fullName !== 'Administrator') {
-            return ADMIN_USER;
-          }
-          return parsed;
-        }
-      }
+      localStorage.removeItem('bnhs_omes_current_user');
     } catch {
       // ignore
     }
-    return null;
-  });
-
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('bnhs_omes_current_user', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('bnhs_omes_current_user');
-    }
-  }, [currentUser]);
+  }, []);
 
   const loginAsAdmin = (passwordAttempt: string) => {
     const adminPass = localStorage.getItem('bnhs_omes_admin_pass') || 'omes123';
