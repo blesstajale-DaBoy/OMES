@@ -24,6 +24,13 @@ service cloud.firestore {
              data.department is string && data.department.size() <= 100;
     }
 
+    function isValidMentor(data) {
+      return data.id is string && data.id.size() <= 64 &&
+             data.fullName is string && data.fullName.size() <= 200 &&
+             data.position is string && data.position.size() <= 100 &&
+             data.department is string && data.department.size() <= 100;
+    }
+
     function isValidObservation(data) {
       return data.id is string && data.id.size() <= 64 &&
              data.teacherId is string && data.teacherId.size() <= 64 &&
@@ -42,6 +49,13 @@ service cloud.firestore {
       allow read: if isValidId(supervisorId);
       allow create, update: if isValidId(supervisorId) && isValidSupervisor(request.resource.data);
       allow delete: if isValidId(supervisorId);
+    }
+
+    // Mentors collection
+    match /mentors/{mentorId} {
+      allow read: if isValidId(mentorId);
+      allow create, update: if isValidId(mentorId) && isValidMentor(request.resource.data);
+      allow delete: if isValidId(mentorId);
     }
 
     // Observations collection

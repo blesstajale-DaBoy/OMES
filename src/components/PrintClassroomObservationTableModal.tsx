@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { ClassroomObservation } from '../types';
+import { getScopedTeachersForModal } from '../utils/supervisionScope';
 import {
   X,
   Printer,
@@ -20,8 +21,8 @@ interface PrintClassroomObservationTableModalProps {
 export const PrintClassroomObservationTableModal: React.FC<
   PrintClassroomObservationTableModalProps
 > = ({ isOpen, onClose, records }) => {
-  const { schoolProfile, teachers, supervisors } = useData();
-  const { currentUser } = useAuth();
+  const { schoolProfile, teachers, supervisors, mentors } = useData();
+  const { currentUser, isAdmin, isTeacher, isSupervisor } = useAuth();
 
   const [selectedTerm, setSelectedTerm] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
@@ -29,6 +30,13 @@ export const PrintClassroomObservationTableModal: React.FC<
   const [selectedSupervisorName, setSelectedSupervisorName] = useState<string>('All');
 
   if (!isOpen) return null;
+
+  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors, mentors);
+  const availableTeacherIdsInRecords = new Set(records.map((r) => r.teacherId));
+  const filterTeacherOptions =
+    scopedTeachers.length > 0
+      ? scopedTeachers
+      : teachers.filter((t) => availableTeacherIdsInRecords.has(t.id));
 
   const displayedRecords = records.filter((r) => {
     const matchesTerm = selectedTerm === 'All' || r.quarterTerm === selectedTerm;
@@ -57,7 +65,7 @@ export const PrintClassroomObservationTableModal: React.FC<
       ? selectedSupervisorName
       : displayedRecords.length === 1
         ? displayedRecords[0].supervisorName
-        : currentUser.fullName;
+        : currentUser?.fullName || 'Instructional Supervisor';
 
   const handlePrint = () => {
     window.print();
@@ -288,31 +296,35 @@ export const PrintClassroomObservationTableModal: React.FC<
               <option value="Term 3">Term 3</option>
             </select>
 
-            <select
-              value={selectedTeacherId}
-              onChange={(e) => setSelectedTeacherId(e.target.value)}
-              className="border border-stone-300 rounded-md px-2.5 py-1 bg-white text-stone-800 font-medium"
-            >
-              <option value="All">All Teachers</option>
-              {teachers.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.fullName}
-                </option>
-              ))}
-            </select>
+            {!isTeacher && (
+              <select
+                value={selectedTeacherId}
+                onChange={(e) => setSelectedTeacherId(e.target.value)}
+                className="border border-stone-300 rounded-md px-2.5 py-1 bg-white text-stone-800 font-medium"
+              >
+                <option value="All">All Teachers</option>
+                {filterTeacherOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.fullName}
+                  </option>
+                ))}
+              </select>
+            )}
 
-            <select
-              value={selectedSupervisorName}
-              onChange={(e) => setSelectedSupervisorName(e.target.value)}
-              className="border border-stone-300 rounded-md px-2.5 py-1 bg-white text-stone-800 font-medium"
-            >
-              <option value="All">All Assigned Supervisors</option>
-              {supervisors.map((s) => (
-                <option key={s.id} value={s.fullName}>
-                  {s.fullName}
-                </option>
-              ))}
-            </select>
+            {isAdmin && (
+              <select
+                value={selectedSupervisorName}
+                onChange={(e) => setSelectedSupervisorName(e.target.value)}
+                className="border border-stone-300 rounded-md px-2.5 py-1 bg-white text-stone-800 font-medium"
+              >
+                <option value="All">All Assigned Supervisors</option>
+                {supervisors.map((s) => (
+                  <option key={s.id} value={s.fullName}>
+                    {s.fullName}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <select
               value={selectedStatus}

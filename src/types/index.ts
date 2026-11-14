@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'supervisor' | 'teacher';
+export type UserRole = 'admin' | 'supervisor' | 'mentor' | 'teacher';
 
 export interface User {
   id: string;
@@ -12,6 +12,8 @@ export interface User {
   avatarUrl?: string;
   assignedTeacherIds?: string[];
   supervisorId?: string; // Links to Supervisor record if role is supervisor
+  mentorId?: string; // Links to Mentor record if role is mentor
+  teacherId?: string; // Links to Teacher record if role is teacher
 }
 
 export type SchoolDepartment = 'Junior High School' | 'Senior High School';
@@ -25,7 +27,9 @@ export interface Teacher {
   subject: string; // User encodes the subject (e.g., Science, Mathematics, English, etc.)
   gradeLevels: string[];
   assignedSupervisorId: string;
+  assignedMentorId?: string;
   email: string;
+  password?: string; // Personal account password (default: omes123)
   status: 'Active' | 'On Leave' | 'Official Travel';
   observationsCompleted: number;
   lastObservationDate?: string;
@@ -43,6 +47,21 @@ export interface Supervisor {
   assignedTeacherIds: string[];
   totalObservationsThisTerm: number;
   driveUrl?: string; // Google Drive folder repository for instructional supervision & DLLs
+}
+
+export interface Mentor {
+  id: string;
+  employeeId: string;
+  fullName: string;
+  position: string;
+  department: string;
+  subjectArea?: string;
+  email: string;
+  phone?: string;
+  password?: string;
+  assignedTeacherIds: string[];
+  totalEvaluationsThisTerm?: number;
+  driveUrl?: string;
 }
 
 export interface CotIndicatorRating {
@@ -91,6 +110,9 @@ export interface LessonPlanCheck {
   department: string;
   supervisorId: string;
   supervisorName: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
   dateSubmitted: string;
   dateChecked: string;
   weekNumber: number | string;
@@ -141,7 +163,8 @@ export type SupervisionCategory =
   | 'lesson-plan'
   | 'classroom'
   | 'fleeting'
-  | 'assessment';
+  | 'assessment'
+  | 'ims-lms';
 
 export interface PMCFRecord {
   id: string;
@@ -151,6 +174,11 @@ export interface PMCFRecord {
   teacherName: string;
   supervisorId: string;
   supervisorName: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
+  sourceRecordId?: string;
+  sourceCode?: string;
   date: string;
   quarterTerm: 'Term 1' | 'Term 2' | 'Term 3' | string;
   criticalIncidentDescription: string;
@@ -164,7 +192,8 @@ export interface PMCFRecord {
     | 'Walkthrough/Fleeting Observations'
     | 'Lesson Plan'
     | 'Assessment'
-    | 'COT-PMES';
+    | 'COT-PMES'
+    | 'IMs & LMs';
   actionPlanOutput: string;
   impactOnJobPerformance: string;
   status: 'Resolved' | 'In Progress' | 'Scheduled Follow-up';
@@ -179,6 +208,11 @@ export interface FarRecord {
   teacherName: string;
   supervisorId?: string;
   supervisorName?: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
+  sourceRecordId?: string;
+  sourceCode?: string;
   term: 'Term 1' | 'Term 2' | 'Term 3' | string;
   lessonPlanWeek: string; // Encoded week, e.g. Week 4
   findings: string;
@@ -191,6 +225,8 @@ export interface FarRecord {
 export function getPmcfCategory(r: PMCFRecord): SupervisionCategory {
   if (r.category) return r.category;
   switch (r.coachingMechanism) {
+    case 'IMs & LMs':
+      return 'ims-lms';
     case 'Assessment':
       return 'assessment';
     case 'Lesson Plan':
@@ -226,6 +262,9 @@ export interface InstructionalMaterialQA {
   teacherName: string;
   supervisorId?: string;
   supervisorName?: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
   gradeSubject: string;
   dateSubmitted: string;
   fileUrl?: string; // Google Drive link or valid web link
@@ -246,6 +285,9 @@ export interface AssessmentRecord {
   teacherName: string;
   supervisorId?: string;
   supervisorName?: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
   quarterTerm: 'Term 1' | 'Term 2' | 'Term 3' | string;
   assessmentType: 'Quarterly Examination' | 'Summative Test' | 'Diagnostic Test';
   totalTakers: number;
@@ -256,6 +298,78 @@ export interface AssessmentRecord {
   leastMasteredCompetencies: string[];
   remediationPlan: string;
   googleDriveLink?: string;
+}
+
+export type FormativeTerm = 'Term 1' | 'Term 2' | 'Term 3';
+
+export interface FormativeAssessmentRecord {
+  id: string;
+  code: string;
+  date: string;
+  term: FormativeTerm;
+  teacherId: string;
+  teacherName: string;
+  subject: string;
+  gradeLevel: string;
+  section: string;
+  formativeType: string;
+  competencyTopic: string;
+  totalLearners: number;
+  masteryCount: number;
+  meanScore: number;
+  highestPossibleScore: number;
+  mps: number;
+  feedbackNotes: string;
+  status: 'Mastery Achieved' | 'Needs Remediation';
+  googleDriveLink?: string;
+  supervisorId?: string;
+  supervisorName?: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
+}
+
+export type SummativeTerm = 'Term 1' | 'Term 2' | 'Term 3';
+
+export interface SummativeAssessmentRecord {
+  id: string;
+  code: string;
+  date: string;
+  term: SummativeTerm;
+  teacherId: string;
+  teacherName: string;
+  subject: string;
+  gradeLevel: string;
+  section: string;
+  summativeType: string;
+  tosVerified: 'TOS & Answer Key Verified' | 'Pending TOS Verification';
+  competencyCoverage: string;
+  totalLearners: number;
+  passedCount: number;
+  meanScore: number;
+  highestPossibleScore: number;
+  mps: number;
+  leastMasteredNotes: string;
+  status: 'Mastery Achieved' | 'Needs Remediation';
+  examinationPeriod?: string;
+  totalItems?: number;
+  qualitySignOff?: string;
+  tosAttached?: boolean;
+  bloomRemember?: number;
+  bloomUnderstand?: number;
+  bloomApply?: number;
+  bloomAnalyze?: number;
+  bloomEvaluate?: number;
+  bloomCreate?: number;
+  answerKeyVerified?: boolean;
+  tosAlignment?: string;
+  itemQualityRemarks?: string;
+  googleDriveLink?: string;
+  supervisorId?: string;
+  supervisorName?: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
 }
 
 export interface ResourceLink {
@@ -307,6 +421,7 @@ export interface SchoolProfile {
 export type AuditLogCategory =
   | 'Roster / Teaching Personnel'
   | 'Roster / Instructional Supervisor'
+  | 'Roster / Mentor'
   | 'Classroom Observation (COT)'
   | 'Lesson Plan (DLL / DLP)';
 
@@ -337,16 +452,16 @@ export interface AppNotification {
   id: string;
   recipientTeacherId: string;
   recipientTeacherName: string;
-  type: 'observation_scheduled' | 'lesson_plan_verified';
+  type: 'observation_scheduled' | 'lesson_plan_verified' | 'pmcf_far_generated';
+  category?: SupervisionCategory;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
   title: string;
   message: string;
   timestamp: string;
   formattedDate: string;
   read: boolean;
-  targetTab: 'observation' | 'lesson-plans';
+  targetTab: 'observation' | 'lesson-plans' | 'far-pmcf' | 'ims-assessments';
   referenceCode?: string;
   supervisorName?: string;
   statusBadge?: string;
 }
-
-

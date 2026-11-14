@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { UserRole } from '../types';
 import {
   X,
   Lock,
@@ -9,29 +10,32 @@ import {
   KeyRound,
   Check,
   GraduationCap,
+  BookOpenCheck,
   Key,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onOpenForgotPassword?: (supervisorId?: string) => void;
+  onOpenForgotPassword?: (role?: 'supervisor' | 'mentor', accountId?: string) => void;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenForgotPassword }) => {
-  const { loginAsAdmin, loginAsSupervisor, loginAsTeacher } = useAuth();
-  const { supervisors, teachers } = useData();
+  const { loginAsAdmin, loginAsSupervisor, loginAsMentor, loginAsTeacher } = useAuth();
+  const { supervisors, mentors, teachers } = useData();
 
-  const [loginRole, setLoginRole] = useState<'admin' | 'supervisor' | 'teacher'>('admin');
+  const [loginRole, setLoginRole] = useState<UserRole>('admin');
 
-  // Supervisor selection
+  // Account selections
   const [selectedSupervisorId, setSelectedSupervisorId] = useState(supervisors[0]?.id || '');
-
-  // Teacher selection
+  const [selectedMentorId, setSelectedMentorId] = useState(mentors[0]?.id || '');
   const [selectedTeacherId, setSelectedTeacherId] = useState(teachers[0]?.id || '');
 
   // Password state
-  const [password, setPassword] = useState('omes123');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
@@ -48,7 +52,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
         setTimeout(() => {
           setSuccessMsg('');
           onClose();
-        }, 600);
+        }, 500);
       } else {
         setErrorMsg(res.message || 'Invalid Administrator password. Default: omes123');
       }
@@ -64,9 +68,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
         setTimeout(() => {
           setSuccessMsg('');
           onClose();
-        }, 600);
+        }, 500);
       } else {
         setErrorMsg(res.message || 'Incorrect password for this supervisor.');
+      }
+    } else if (loginRole === 'mentor') {
+      const targetMentor = mentors.find((m) => m.id === selectedMentorId) || mentors[0];
+      if (!targetMentor) {
+        setErrorMsg('Please select a Mentor.');
+        return;
+      }
+      const res = loginAsMentor(targetMentor, password);
+      if (res.success) {
+        setSuccessMsg(`Welcome, Mentor ${targetMentor.fullName}`);
+        setTimeout(() => {
+          setSuccessMsg('');
+          onClose();
+        }, 500);
+      } else {
+        setErrorMsg(res.message || 'Incorrect password for this mentor.');
       }
     } else if (loginRole === 'teacher') {
       const targetTeacher = teachers.find((t) => t.id === selectedTeacherId) || teachers[0];
@@ -80,7 +100,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
         setTimeout(() => {
           setSuccessMsg('');
           onClose();
-        }, 600);
+        }, 500);
       } else {
         setErrorMsg(res.message || 'Invalid password.');
       }
@@ -91,41 +111,41 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="bg-[#701628] px-6 py-4 text-white flex items-center justify-between">
+        <div className="bg-[#701628] px-5 sm:px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-amber-400/20 rounded-lg border border-amber-300/30 text-amber-300">
               <KeyRound className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold tracking-tight">OMES System Authentication</h3>
+              <h3 className="text-base font-bold tracking-tight">OMES Switch Account</h3>
               <p className="text-xs text-amber-200/80">Barobo National High School · Portal</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-amber-200 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded-lg text-amber-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Role Tabs */}
-        <div className="grid grid-cols-3 bg-stone-100 p-1.5 border-b border-stone-200 text-xs font-bold">
+        {/* 4 Role Tabs */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 bg-stone-100 p-1.5 border-b border-stone-200 text-xs font-bold gap-1">
           <button
             type="button"
             onClick={() => {
               setLoginRole('admin');
               setErrorMsg('');
-              setPassword('omes123');
+              setPassword('');
             }}
-            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+            className={`py-2 px-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer ${
               loginRole === 'admin'
                 ? 'bg-white text-[#701628] shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <UserCheck className="w-3.5 h-3.5" />
-            <span>Administrator</span>
+            <UserCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>Admin</span>
           </button>
 
           <button
@@ -133,16 +153,33 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
             onClick={() => {
               setLoginRole('supervisor');
               setErrorMsg('');
-              setPassword('omes123');
+              setPassword('');
             }}
-            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+            className={`py-2 px-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer ${
               loginRole === 'supervisor'
                 ? 'bg-white text-emerald-800 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5" />
+            <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
             <span>Supervisor</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLoginRole('mentor');
+              setErrorMsg('');
+              setPassword('');
+            }}
+            className={`py-2 px-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer ${
+              loginRole === 'mentor'
+                ? 'bg-white text-indigo-800 shadow-xs'
+                : 'text-stone-600 hover:text-stone-900'
+            }`}
+          >
+            <BookOpenCheck className="w-3.5 h-3.5 shrink-0" />
+            <span>Mentor</span>
           </button>
 
           <button
@@ -150,15 +187,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
             onClick={() => {
               setLoginRole('teacher');
               setErrorMsg('');
-              setPassword('omes123');
+              setPassword('');
             }}
-            className={`py-2 rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+            className={`py-2 px-1.5 rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer ${
               loginRole === 'teacher'
                 ? 'bg-white text-blue-800 shadow-xs'
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <GraduationCap className="w-3.5 h-3.5" />
+            <GraduationCap className="w-3.5 h-3.5 shrink-0" />
             <span>Teacher</span>
           </button>
         </div>
@@ -209,7 +246,32 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
                 ))}
               </select>
               <p className="text-[11px] text-stone-500 mt-1">
-                Each registered supervisor has their own private account and personal password.
+                Each registered supervisor sees only their assigned teachers and evaluations.
+              </p>
+            </div>
+          )}
+
+          {loginRole === 'mentor' && (
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1">
+                Select Registered Mentor
+              </label>
+              <select
+                value={selectedMentorId}
+                onChange={(e) => {
+                  setSelectedMentorId(e.target.value);
+                  setErrorMsg('');
+                }}
+                className="w-full p-2.5 text-xs font-semibold border border-stone-300 rounded-lg bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#701628]"
+              >
+                {mentors.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.fullName} ({m.position} - {m.subjectArea || m.department})
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-stone-500 mt-1">
+                Mentors manage Lesson Plans, Assessments, IMs & LMs for assigned teachers.
               </p>
             </div>
           )}
@@ -233,6 +295,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
                   </option>
                 ))}
               </select>
+              <p className="text-[11px] text-stone-500 mt-1">
+                Teachers access only their personal records and personal PMCF/FAR reports.
+              </p>
             </div>
           )}
 
@@ -245,24 +310,35 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
             <div className="relative">
               <Lock className="w-4 h-4 absolute left-3 top-3 text-stone-400" />
               <input
-                type="password"
+                type={showPassword ? 'text' : 'password'}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password..."
-                className="w-full pl-9 pr-3 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#701628] font-mono"
+                placeholder="Enter password (default: omes123)..."
+                className="w-full pl-9 pr-10 py-2 text-sm border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#701628] font-mono"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="absolute right-3 top-2.5 text-stone-400 hover:text-stone-700 cursor-pointer"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
-            {loginRole === 'supervisor' && onOpenForgotPassword && (
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[11px] text-stone-500">Need help accessing your supervisor account?</span>
+            {(loginRole === 'supervisor' || loginRole === 'mentor') && onOpenForgotPassword && (
+              <div className="flex items-center justify-between pt-1.5">
+                <span className="text-[11px] text-stone-500">Need help accessing your account?</span>
                 <button
                   type="button"
                   onClick={() => {
                     onClose();
-                    onOpenForgotPassword(selectedSupervisorId);
+                    onOpenForgotPassword(
+                      loginRole === 'mentor' ? 'mentor' : 'supervisor',
+                      loginRole === 'mentor' ? selectedMentorId : selectedSupervisorId
+                    );
                   }}
-                  className="text-[11px] text-[#701628] hover:text-[#580e1c] font-bold hover:underline flex items-center gap-1"
+                  className="text-[11px] text-[#701628] hover:text-[#580e1c] font-bold hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Key className="w-3 h-3 text-amber-700" />
                   <span>Forgot Password?</span>
@@ -274,9 +350,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-2.5 px-4 bg-[#701628] hover:bg-[#580e1c] text-white text-sm font-bold rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-amber-400 focus:outline-none"
+              className="w-full py-2.5 px-4 bg-[#701628] hover:bg-[#580e1c] text-white text-sm font-bold rounded-lg shadow-sm transition-colors focus:ring-2 focus:ring-amber-400 focus:outline-none cursor-pointer"
             >
-              Sign In as {loginRole === 'admin' ? 'Administrator' : loginRole === 'supervisor' ? 'Supervisor' : 'Teacher'}
+              Sign In as{' '}
+              {loginRole === 'admin'
+                ? 'Administrator'
+                : loginRole === 'supervisor'
+                ? 'Supervisor'
+                : loginRole === 'mentor'
+                ? 'Mentor'
+                : 'Teacher'}
             </button>
           </div>
         </form>

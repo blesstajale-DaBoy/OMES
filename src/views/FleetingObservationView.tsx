@@ -165,8 +165,9 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     updateFarRecord,
     verifyFarRecord,
     deleteFarRecord,
+    schoolProfile,
   } = useData();
-  const { currentUser, isAdmin, isTeacher } = useAuth();
+  const { currentUser, isAdmin, isTeacher, isMentor } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSupervisorFilterId, setSelectedSupervisorFilterId] = useState('All');
@@ -174,6 +175,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
   const [editingVisit, setEditingVisit] = useState<FleetingObservation | null>(null);
 
   const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors);
+  const modalTeachers = scopedTeachers.length > 0 ? scopedTeachers : teachers;
 
   // Fleeting Observation Form State
   const [teacherId, setTeacherId] = useState(teachers[0]?.id || '');
@@ -498,8 +500,8 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
       addFleetingObservation({
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || currentUser?.id || 'system',
+        supervisorName: resolvedSup?.fullName || currentUser?.fullName || 'Instructional Supervisor',
         date: new Date().toISOString().slice(0, 10),
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         durationMinutes,
@@ -552,8 +554,10 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     }));
 
     const selectedSupervisor = supervisors.find((s) => s.id === selectedObsSupervisorId);
-    const observerId = selectedSupervisor ? selectedSupervisor.id : currentUser.id;
-    const observerName = selectedSupervisor ? selectedSupervisor.fullName : currentUser.fullName;
+    const observerId = selectedSupervisor ? selectedSupervisor.id : currentUser?.id || 'system';
+    const observerName = selectedSupervisor
+      ? selectedSupervisor.fullName
+      : currentUser?.fullName || 'Instructional Supervisor';
 
     addObservation({
       evaluationType: 'classroom',
@@ -649,8 +653,8 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         category: pmcfModalContext,
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || currentUser?.id || 'system',
+        supervisorName: resolvedSup?.fullName || currentUser?.fullName || 'Instructional Supervisor',
         date: new Date().toISOString().slice(0, 10),
         quarterTerm: pmcfQuarterTerm,
         criticalIncidentDescription: pmcfCriticalIncidentDescription,
@@ -721,8 +725,8 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         category: farModalContext,
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || currentUser?.id || 'system',
+        supervisorName: resolvedSup?.fullName || currentUser?.fullName || 'Instructional Supervisor',
         term: farTerm,
         lessonPlanWeek: farLessonPlanWeek.trim() || 'Week 1',
         findings: farFindings.trim(),
@@ -736,6 +740,113 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     setFarAnalysis('');
     setFarRecommendations('');
   };
+
+  const handlePrintWalkthroughTable = () => {
+    const rowsHtml = filteredVisits
+      .map((v, idx) => {
+        const ratingsMap = {
+          ...DEFAULT_FLEETING_MONITORING_RATINGS,
+          ...(v.monitoringRatings || {}),
+        };
+        const keys = Object.keys(DEFAULT_FLEETING_MONITORING_RATINGS);
+        const evidentCount = keys.filter((k) => ratingsMap[k] === 'E').length;
+        const notEvidentCount = keys.filter((k) => ratingsMap[k] === 'NE').length;
+        const supLabel = resolveRecordSupervisorName(v, teachers, supervisors);
+        return `
+          <tr>
+            <td style="text-align:center;">${idx + 1}</td>
+            <td style="font-family:monospace;font-weight:bold;color:#701628;">${v.visitCode}</td>
+            <td><strong>${v.teacherName}</strong><br/><span style="font-size:10px;color:#64748b;">${v.subject} · ${v.gradeAndSection}</span></td>
+            <td>Engagement: ${v.learnerEngagementLevel}<br/>Climate: ${v.classroomAtmosphere}<br/>${v.boardWorkQuality} · ${v.timeOnTask}</td>
+            <td style="text-align:center;font-weight:bold;">E: ${evidentCount} / NE: ${notEvidentCount}</td>
+            <td><strong>Commendation:</strong> ${v.rapidCommendation}<br/><strong>Coaching Tip:</strong> ${v.quickCoachingTip}</td>
+            <td>${supLabel}<br/><span style="font-size:10px;color:#64748b;">${v.date} (${v.durationMinutes}m)</span></td>
+          </tr>`;
+      })
+      .join('');
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fleeting_Walkthrough_Observation_Table_${new Date().toISOString().slice(0, 10)}</title>
+  <style>
+    @page { size: landscape; margin: 1cm; }
+    body { font-family: Arial, sans-serif; color: #0f172a; margin: 0; padding: 16px; font-size: 11px; }
+    .hdr { text-align: center; border-bottom: 2px solid #701628; padding-bottom: 10px; margin-bottom: 14px; }
+    .hdr h2 { margin: 4px 0; color: #701628; text-transform: uppercase; font-size: 16px; }
+    .hdr p { margin: 2px 0; color: #475569; font-size: 11px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; text-align: left; }
+    th { background: #f1f5f9; text-transform: uppercase; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <p>Republic of the Philippines · Department of Education · Schools Division of Surigao del Sur</p>
+    <h2>${schoolProfile.schoolName}</h2>
+    <p>Fleeting &amp; Walkthrough Observation Monitoring Report · Prepared by: ${currentUser?.fullName || 'Instructional Supervisor'}</p>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:32px;text-align:center;">No.</th>
+        <th style="width:95px;">Visit Code</th>
+        <th style="width:140px;">Teacher &amp; Subject</th>
+        <th style="width:165px;">Pulse Parameters</th>
+        <th style="width:85px;text-align:center;">E / NE Score</th>
+        <th>Commendation &amp; Coaching Tip</th>
+        <th style="width:130px;">Observer &amp; Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:16px;">No Fleeting &amp; Walkthrough Observation records found.</td></tr>'}
+    </tbody>
+  </table>
+</body>
+</html>`;
+
+    const existingIframe = document.getElementById('fleeting-walkthrough-print-iframe');
+    if (existingIframe) existingIframe.remove();
+    const iframe = document.createElement('iframe');
+    iframe.id = 'fleeting-walkthrough-print-iframe';
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      }, 250);
+    }
+  };
+
+  if (isMentor) {
+    return (
+      <div className="bg-white rounded-2xl border border-violet-200 p-8 shadow-xs max-w-2xl mx-auto my-8 text-center space-y-3">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-violet-100 text-violet-800 mx-auto">
+          <ClipboardCheck className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-stone-900">
+          Mentor Access Scope Notice
+        </h2>
+        <p className="text-xs text-stone-600 leading-relaxed">
+          Classroom Observations and Fleeting &amp; Walkthrough Observations are managed exclusively by Instructional Supervisors and the School Principal. Your Mentor account is authorized to manage{' '}
+          <strong className="text-violet-900">Lesson Plans (DLL/DLP)</strong>,{' '}
+          <strong className="text-violet-900">Formative &amp; Summative Assessments</strong>, and{' '}
+          <strong className="text-violet-900">Instructional Materials &amp; Learners&apos; Materials (IMs &amp; LMs)</strong> for your assigned mentees.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -827,7 +938,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         </div>
         <div className="text-xs text-stone-500 font-medium hidden sm:block">
           Total Walkthroughs Logged:{' '}
-          <span className="font-bold font-mono text-stone-800">{fleetingObservations.length}</span>
+          <span className="font-bold font-mono text-stone-800">{filteredVisits.length}</span>
         </div>
       </div>
 
@@ -847,6 +958,15 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
               {filteredVisits.length}{' '}
               {filteredVisits.length === 1 ? 'Record' : 'Records'}
             </span>
+            <button
+              type="button"
+              onClick={handlePrintWalkthroughTable}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+              title="Print / Export Fleeting & Walkthrough Observation Table to PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-300" />
+              <span>Print to PDF</span>
+            </button>
             {!isTeacher && (
               <button
                 type="button"
@@ -871,13 +991,13 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                 <th className="py-3 px-4">Evaluation Status</th>
                 <th className="py-3 px-4">Commendation &amp; Coaching Tip</th>
                 <th className="py-3 px-4">Observer &amp; Date</th>
-                <th className="py-3 px-4 text-right">Actions</th>
+                {!isTeacher && <th className="py-3 px-4 text-right">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
               {filteredVisits.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-stone-500">
+                  <td colSpan={isTeacher ? 8 : 9} className="py-8 text-center text-stone-500">
                     No Fleeting &amp; Walkthrough Observation records yet. Click &ldquo;Log Fleeting/Walkthrough Visit&rdquo; to add a record.
                   </td>
                 </tr>
@@ -991,26 +1111,28 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                           {v.date} {v.time ? `· ${v.time}` : ''}
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => openEditModal(v)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                            title="Edit Walkthrough Record"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-stone-600" />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            onClick={() => deleteFleetingObservation(v.id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                            title="Delete Walkthrough Record"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      </td>
+                      {!isTeacher && (
+                        <td className="py-3 px-4 text-right">
+                          <div className="inline-flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => openEditModal(v)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                              title="Edit Walkthrough Record"
+                            >
+                              <Pencil className="w-3.5 h-3.5 text-stone-600" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              onClick={() => deleteFleetingObservation(v.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                              title="Delete Walkthrough Record"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -1127,24 +1249,26 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                   <span>
                     By: {v.supervisorName} ({v.date})
                   </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => openEditModal(v)}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md font-bold transition-colors"
-                      title="Edit record"
-                    >
-                      <Pencil className="w-3 h-3 text-stone-600" />
-                      <span>Edit</span>
-                    </button>
-                    <button
-                      onClick={() => deleteFleetingObservation(v.id)}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md font-bold transition-colors"
-                      title="Delete record"
-                    >
-                      <Trash2 className="w-3 h-3 text-rose-600" />
-                      <span>Delete</span>
-                    </button>
-                  </div>
+                  {!isTeacher && (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => openEditModal(v)}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-md font-bold transition-colors"
+                        title="Edit record"
+                      >
+                        <Pencil className="w-3 h-3 text-stone-600" />
+                        <span>Edit</span>
+                      </button>
+                      <button
+                        onClick={() => deleteFleetingObservation(v.id)}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-md font-bold transition-colors"
+                        title="Delete record"
+                      >
+                        <Trash2 className="w-3 h-3 text-rose-600" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -1974,7 +2098,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                     onChange={(e) => setTeacherId(e.target.value)}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                   >
-                    {teachers.map((t) => (
+                    {modalTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -2237,7 +2361,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                     }}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white text-stone-900 font-semibold"
                   >
-                    {teachers.map((t) => (
+                    {modalTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department} · {t.subject || t.position})
                       </option>
@@ -2543,7 +2667,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                     onChange={(e) => setPmcfTeacherId(e.target.value)}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                   >
-                    {teachers.map((t) => (
+                    {modalTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -2707,7 +2831,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                   onChange={(e) => setFarTeacherId(e.target.value)}
                   className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium"
                 >
-                  {teachers.map((t) => (
+                  {modalTeachers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.fullName} ({t.department} · {t.position} - {t.subject})
                     </option>

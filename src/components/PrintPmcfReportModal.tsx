@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { PMCFRecord } from '../types';
+import { getScopedTeachersForModal } from '../utils/supervisionScope';
 import {
   X,
   Printer,
@@ -29,8 +30,8 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
   initialSelectedRecordId,
   records,
 }) => {
-  const { pmcfRecords, schoolProfile, teachers } = useData();
-  const { currentUser } = useAuth();
+  const { pmcfRecords, schoolProfile, teachers, supervisors, mentors } = useData();
+  const { currentUser, isTeacher, isMentor } = useAuth();
   const sourceRecords = records ?? pmcfRecords;
 
   const [selectedTerm, setSelectedTerm] = useState<string>('All');
@@ -45,6 +46,15 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
   );
 
   if (!isOpen) return null;
+
+  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors, mentors);
+  const availableTeacherIdsInRecords = new Set(sourceRecords.map((r) => r.teacherId));
+  const filterTeacherOptions =
+    scopedTeachers.length > 0
+      ? scopedTeachers
+      : teachers.filter((t) => availableTeacherIdsInRecords.has(t.id));
+  const officerName = currentUser?.fullName || 'Instructional Supervisor';
+  const officerRoleLabel = isMentor ? 'Mentor' : 'Instructional Supervisor';
 
   // Filter records according to user selection in preview modal
   const displayedRecords = sourceRecords.filter((r) => {
@@ -86,7 +96,7 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
           </td>
           <td style="padding: 8px; border-right: 1px solid #cbd5e1;">
             <strong style="color: #0f172a;">${r.teacherName}</strong><br/>
-            <span style="font-size: 10px; color: #64748b;">Coach: ${r.supervisorName}</span>
+            <span style="font-size: 10px; color: #64748b;">${r.evaluatorRole === 'mentor' && r.mentorName ? `Mentor: ${r.mentorName}` : `Coach: ${r.supervisorName}`}</span>
           </td>
           <td style="padding: 8px; border-right: 1px solid #cbd5e1; font-weight: 600; color: #92400e;">
             ${r.coachingMechanism}
@@ -162,7 +172,7 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
     <div class="meta-item"><strong>Reporting Scope:</strong> ${selectedTerm === 'All' ? 'All Terms (Consolidated)' : selectedTerm}</div>
     <div class="meta-item"><strong>Date Generated:</strong> ${currentDateFormatted}</div>
     <div class="meta-item"><strong>Total Records:</strong> ${displayedRecords.length} (${resolvedCount} Resolved, ${inProgressCount} In Progress)</div>
-    <div class="meta-item"><strong>Rater / Supervisor:</strong> ${currentUser.fullName}</div>
+    <div class="meta-item"><strong>Rater / ${officerRoleLabel}:</strong> ${officerName}</div>
   </div>
 
   <table>
@@ -185,8 +195,8 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
 
   <div class="signatories">
     <div>
-      <div class="sign-line">${currentUser.fullName}</div>
-      <div class="sign-title">Rater / Instructional Supervisor</div>
+      <div class="sign-line">${officerName}</div>
+      <div class="sign-title">Rater / ${officerRoleLabel}</div>
       <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Date: ${currentDateFormatted}</div>
     </div>
     <div>
@@ -205,17 +215,13 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
 
     const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    const printWindow = window.open(url, '_blank');
-    if (printWindow) {
-      printWindow.focus();
-    } else {
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `DepEd_PMCF_Report_${schoolProfile.schoolName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.html`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `DepEd_PMCF_Report_${schoolProfile.schoolName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.html`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -302,21 +308,23 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
             </div>
 
             {/* Teacher Filter */}
-            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-stone-200">
-              <span className="text-stone-500 font-medium">Teacher:</span>
-              <select
-                value={selectedTeacherId}
-                onChange={(e) => setSelectedTeacherId(e.target.value)}
-                className="bg-transparent font-bold text-stone-800 focus:outline-none cursor-pointer max-w-[180px] truncate"
-              >
-                <option value="All">All Teachers</option>
-                {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.fullName}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isTeacher && (
+              <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-stone-200">
+                <span className="text-stone-500 font-medium">Teacher:</span>
+                <select
+                  value={selectedTeacherId}
+                  onChange={(e) => setSelectedTeacherId(e.target.value)}
+                  className="bg-transparent font-bold text-stone-800 focus:outline-none cursor-pointer max-w-[180px] truncate"
+                >
+                  <option value="All">All Teachers</option>
+                  {filterTeacherOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Checkbox if single record opened */}
             {initialSelectedRecordId && (
@@ -381,7 +389,7 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
               </div>
               <div>
                 <span className="font-bold text-stone-500 block">Rater / Coach:</span>
-                <span className="font-semibold text-stone-800">{currentUser.fullName}</span>
+                <span className="font-semibold text-stone-800">{officerName}</span>
               </div>
             </div>
 
@@ -421,7 +429,11 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
                           </td>
                           <td className="border border-stone-300 py-2 px-2.5">
                             <div className="font-bold text-stone-900">{r.teacherName}</div>
-                            <div className="text-[10px] text-stone-500">Coach: {r.supervisorName}</div>
+                            <div className="text-[10px] text-stone-500">
+                              {r.evaluatorRole === 'mentor' && r.mentorName
+                                ? `Mentor: ${r.mentorName}`
+                                : `Coach: ${r.supervisorName}`}
+                            </div>
                           </td>
                           <td className="border border-stone-300 py-2 px-2.5 font-semibold text-amber-900">
                             {r.coachingMechanism}
@@ -458,9 +470,9 @@ export const PrintPmcfReportModal: React.FC<PrintPmcfReportModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-10 pt-4 border-t border-stone-200 text-center text-xs">
               <div>
                 <div className="font-bold border-b border-stone-900 pb-1 text-stone-900">
-                  {currentUser.fullName}
+                  {officerName}
                 </div>
-                <div className="text-[11px] text-stone-500 mt-1">Rater / Instructional Supervisor</div>
+                <div className="text-[11px] text-stone-500 mt-1">Rater / {officerRoleLabel}</div>
                 <div className="text-[10px] text-stone-400 font-mono mt-0.5">Date: {currentDateFormatted}</div>
               </div>
 

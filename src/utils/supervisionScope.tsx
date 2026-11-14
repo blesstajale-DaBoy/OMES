@@ -1,12 +1,26 @@
 import React from 'react';
-import { User, Teacher, Supervisor } from '../types';
-import { UserCheck, Users, ShieldCheck } from 'lucide-react';
+import { User, Teacher, Supervisor, Mentor, SupervisionCategory } from '../types';
+import { UserCheck, Users, ShieldCheck, BookMarked } from 'lucide-react';
 
 export interface ScopedRecordLike {
   teacherId?: string;
   teacherName?: string;
   supervisorId?: string;
   supervisorName?: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole?: 'admin' | 'supervisor' | 'mentor' | string;
+}
+
+export const MENTOR_ALLOWED_CATEGORIES: SupervisionCategory[] = [
+  'lesson-plan',
+  'assessment',
+  'ims-lms',
+];
+
+export function isMentorAllowedCategory(cat?: SupervisionCategory | string): boolean {
+  if (!cat) return false;
+  return (MENTOR_ALLOWED_CATEGORIES as string[]).includes(cat);
 }
 
 /**
@@ -25,9 +39,23 @@ export function resolveRecordTeacher(
 }
 
 /**
+ * Resolves the Teacher profile associated with the currently logged-in Teacher user.
+ */
+export function resolveActiveTeacherForUser(
+  currentUser: User | null,
+  teachers: Teacher[]
+): Teacher | undefined {
+  if (!currentUser || currentUser.role !== 'teacher') return undefined;
+  const normName = currentUser.fullName.trim().toLowerCase();
+  return teachers.find(
+    (t) =>
+      t.id === (currentUser.teacherId || currentUser.id) ||
+      t.fullName.trim().toLowerCase() === normName
+  );
+}
+
+/**
  * Resolves the Instructional Supervisor who evaluated/monitored a given record.
- * Checks explicit supervisorId / supervisorName on the record first (if matching a registered Supervisor),
- * and falls back to the Teacher's assignedSupervisorId.
  */
 export function resolveRecordSupervisor(
   record: ScopedRecordLike,
@@ -51,7 +79,6 @@ export function resolveRecordSupervisor(
       )
     : undefined;
 
-  // If the teacher is a Master Teacher assigned to the School Principal, prefer assignedSupervisor if record had legacy sup-3
   if (
     teacher &&
     teacher.position.toLowerCase().includes('master teacher') &&
@@ -61,6 +88,34 @@ export function resolveRecordSupervisor(
   }
 
   return explicitSupervisor || assignedSupervisor;
+}
+
+/**
+ * Resolves the Mentor associated with a given record using mentorId, mentorName, or the teacher's assignedMentorId.
+ */
+export function resolveRecordMentor(
+  record: ScopedRecordLike,
+  teachers: Teacher[],
+  mentors: Mentor[] = []
+): Mentor | undefined {
+  const teacher = resolveRecordTeacher(record, teachers);
+  const normMentorName = (record.mentorName || '').trim().toLowerCase();
+
+  const explicitMentor = mentors.find(
+    (m) =>
+      (record.mentorId && m.id === record.mentorId) ||
+      (normMentorName && m.fullName.trim().toLowerCase() === normMentorName)
+  );
+
+  const assignedMentor = teacher
+    ? mentors.find(
+        (m) =>
+          m.id === teacher.assignedMentorId ||
+          (m.assignedTeacherIds && m.assignedTeacherIds.includes(teacher.id))
+      )
+    : undefined;
+
+  return explicitMentor || assignedMentor;
 }
 
 /**
@@ -83,13 +138,14 @@ export function resolveRecordSupervisorName(
  * Resolves the Instructional Supervisor associated with the currently logged-in user:
  * - For an Instructional Supervisor account: returns their own Supervisor profile.
  * - For a Teacher account: returns the Instructional Supervisor to whom the teacher belongs.
- * - For Administrator: returns undefined (Administrator views all supervisors).
+ * - For Administrator / Mentor: returns undefined.
  */
 export function resolveActiveSupervisorForUser(
-  currentUser: User,
+  currentUser: User | null,
   teachers: Teacher[],
   supervisors: Supervisor[]
 ): Supervisor | undefined {
+  if (!currentUser) return undefined;
   if (currentUser.role === 'supervisor') {
     const normName = currentUser.fullName.trim().toLowerCase();
     return supervisors.find(
@@ -101,12 +157,7 @@ export function resolveActiveSupervisorForUser(
   }
 
   if (currentUser.role === 'teacher') {
-    const normName = currentUser.fullName.trim().toLowerCase();
-    const teacher = teachers.find(
-      (t) =>
-        t.id === currentUser.id ||
-        t.fullName.trim().toLowerCase() === normName
-    );
+    const teacher = resolveActiveTeacherForUser(currentUser, teachers);
     if (teacher) {
       return supervisors.find(
         (s) =>
@@ -120,18 +171,57 @@ export function resolveActiveSupervisorForUser(
 }
 
 /**
- * Determines whether a table row/record should be displayed for the currently logged-in user:
- * - Administrator ('admin'): Sees all records (or filters by selectedSupervisorFilterId if specified).
- * - Instructional Supervisor ('supervisor'): Sees ONLY the records of teachers monitored & evaluated by this Instructional Supervisor.
- * - Teacher ('teacher'): Sees the output table of the Instructional Supervisor that the teacher belongs to (and any record where this teacher was evaluated).
+ * Resolves the Mentor associated with the currently logged-in user:
+ * - For a Mentor account: returns their own Mentor profile.
+ * - For a Teacher account: returns the Mentor assigned to this teacher.
+ */
+export function resolveActiveMentorForUser(
+  currentUser: User | null,
+  teachers: Teacher[],
+  mentors: Mentor[] = []
+): Mentor | undefined {
+  if (!currentUser) return undefined;
+  if (currentUser.role === 'mentor') {
+    const normName = currentUser.fullName.trim().toLowerCase();
+    return mentors.find(
+      (m) =>
+        m.id === currentUser.mentorId ||
+        m.id === currentUser.id ||
+        m.fullName.trim().toLowerCase() === normName
+    );
+  }
+
+  if (currentUser.role === 'teacher') {
+    const teacher = resolveActiveTeacherForUser(currentUser, teachers);
+    if (teacher) {
+      return mentors.find(
+        (m) =>
+          m.id === teacher.assignedMentorId ||
+          (m.assignedTeacherIds && m.assignedTeacherIds.includes(teacher.id))
+      );
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Strict role-based privacy & supervision scoping:
+ * - Administrator ('admin'): Sees all records across all Supervisors, Mentors, and Teachers (unless filtered by selectedSupervisorFilterId).
+ * - Instructional Supervisor ('supervisor'): Sees ONLY records for teachers monitored & evaluated by this Instructional Supervisor.
+ * - Mentor ('mentor'): Sees ONLY records for teachers assigned to this Mentor (within Mentor domains: Lesson Plan, Assessment, IMs & LMs).
+ * - Teacher ('teacher'): Strict privacy — sees ONLY their own personal evaluation & PMCF/FAR records. Never sees other teachers' records or reports.
  */
 export function matchesRoleSupervisionScope(
   record: ScopedRecordLike,
-  currentUser: User,
+  currentUser: User | null,
   teachers: Teacher[],
   supervisors: Supervisor[],
-  selectedSupervisorFilterId: string = 'All'
+  selectedSupervisorFilterId: string = 'All',
+  mentors: Mentor[] = []
 ): boolean {
+  if (!currentUser) return false;
+
   const recordSup = resolveRecordSupervisor(record, teachers, supervisors);
   const recordTeacher = resolveRecordTeacher(record, teachers);
   const assignedSup = recordTeacher
@@ -155,21 +245,29 @@ export function matchesRoleSupervisionScope(
 
   if (currentUser.role === 'supervisor') {
     const currentSup = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
-    if (!currentSup) return true;
+    if (!currentSup) return false;
     return (
       recordSup?.id === currentSup.id ||
-      (!recordSup && assignedSup?.id === currentSup.id)
+      assignedSup?.id === currentSup.id
     );
+  }
+
+  if (currentUser.role === 'mentor') {
+    const currentMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
+    if (!currentMentor) return false;
+    const recordMentor = resolveRecordMentor(record, teachers, mentors);
+    const assignedToMentor =
+      (recordTeacher &&
+        (recordTeacher.assignedMentorId === currentMentor.id ||
+          (currentMentor.assignedTeacherIds || []).includes(recordTeacher.id))) ||
+      (record.teacherId && (currentMentor.assignedTeacherIds || []).includes(record.teacherId));
+
+    return Boolean(recordMentor?.id === currentMentor.id || assignedToMentor);
   }
 
   if (currentUser.role === 'teacher') {
     const normTeacherName = currentUser.fullName.trim().toLowerCase();
-    const currentTeacher = teachers.find(
-      (t) =>
-        t.id === currentUser.id ||
-        t.fullName.trim().toLowerCase() === normTeacherName
-    );
-    const teacherSup = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
+    const currentTeacher = resolveActiveTeacherForUser(currentUser, teachers);
 
     const isDirectTeacherMatch =
       (currentTeacher &&
@@ -177,58 +275,62 @@ export function matchesRoleSupervisionScope(
           recordTeacher?.id === currentTeacher.id)) ||
       (record.teacherName || '').trim().toLowerCase() === normTeacherName;
 
-    const isSameSupervisorGroup =
-      Boolean(teacherSup) &&
-      (recordSup?.id === teacherSup?.id || assignedSup?.id === teacherSup?.id);
-
-    return Boolean(isDirectTeacherMatch || isSameSupervisorGroup);
+    return Boolean(isDirectTeacherMatch);
   }
 
-  return true;
+  return false;
 }
 
 /**
- * Returns the list of Teachers scoped to the current user's Instructional Supervisor for modal dropdowns.
+ * Returns the list of Teachers scoped to the current user for modal dropdowns.
+ * - Admin: All teachers
+ * - Supervisor: Only assigned teachers
+ * - Mentor: Only assigned mentee teachers
+ * - Teacher: Only self
  */
 export function getScopedTeachersForModal(
-  currentUser: User,
+  currentUser: User | null,
   teachers: Teacher[],
-  supervisors: Supervisor[]
+  supervisors: Supervisor[],
+  mentors: Mentor[] = []
 ): Teacher[] {
+  if (!currentUser) return [];
   if (currentUser.role === 'admin') {
     return teachers;
   }
 
-  const activeSup = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
-  if (!activeSup) return teachers;
+  if (currentUser.role === 'teacher') {
+    const currentTeacher = resolveActiveTeacherForUser(currentUser, teachers);
+    return currentTeacher ? [currentTeacher] : [];
+  }
 
-  const scoped = teachers.filter(
+  if (currentUser.role === 'mentor') {
+    const activeMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
+    if (!activeMentor) return [];
+    return teachers.filter(
+      (t) =>
+        t.assignedMentorId === activeMentor.id ||
+        (activeMentor.assignedTeacherIds && activeMentor.assignedTeacherIds.includes(t.id))
+    );
+  }
+
+  const activeSup = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
+  if (!activeSup) return [];
+
+  return teachers.filter(
     (t) =>
       t.assignedSupervisorId === activeSup.id ||
       (activeSup.assignedTeacherIds && activeSup.assignedTeacherIds.includes(t.id))
   );
-
-  if (currentUser.role === 'teacher') {
-    const normName = currentUser.fullName.trim().toLowerCase();
-    const sorted = [...scoped].sort((a, b) => {
-      const aIsSelf = a.id === currentUser.id || a.fullName.trim().toLowerCase() === normName;
-      const bIsSelf = b.id === currentUser.id || b.fullName.trim().toLowerCase() === normName;
-      if (aIsSelf && !bIsSelf) return -1;
-      if (!aIsSelf && bIsSelf) return 1;
-      return 0;
-    });
-    return sorted.length > 0 ? sorted : teachers;
-  }
-
-  return scoped.length > 0 ? scoped : teachers;
 }
 
 interface SupervisionScopeBannerProps {
   selectedSupervisorFilterId?: string;
   onChangeSupervisorFilterId?: (supId: string) => void;
-  currentUser: User;
+  currentUser: User | null;
   teachers: Teacher[];
   supervisors: Supervisor[];
+  mentors?: Mentor[];
   moduleLabel?: string;
 }
 
@@ -238,14 +340,27 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
   currentUser,
   teachers,
   supervisors,
+  mentors = [],
   moduleLabel = 'Supervisory Output Tables',
 }) => {
+  if (!currentUser) return null;
+
   const activeSup = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
-  const assignedTeachers = activeSup
+  const activeMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
+
+  const assignedSupTeachers = activeSup
     ? teachers.filter(
         (t) =>
           t.assignedSupervisorId === activeSup.id ||
           (activeSup.assignedTeacherIds && activeSup.assignedTeacherIds.includes(t.id))
+      )
+    : [];
+
+  const assignedMentorTeachers = activeMentor
+    ? teachers.filter(
+        (t) =>
+          t.assignedMentorId === activeMentor.id ||
+          (activeMentor.assignedTeacherIds && activeMentor.assignedTeacherIds.includes(t.id))
       )
     : [];
 
@@ -259,7 +374,7 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-[#701628] text-white">
-                Instructional Supervisor Output Scope
+                Instructional Supervisor Private Scope
               </span>
               <span className="text-xs font-bold text-stone-900">
                 {activeSup.fullName} ({activeSup.position} · {activeSup.department})
@@ -269,7 +384,7 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
               Displaying only {moduleLabel.toLowerCase()} for teachers monitored and evaluated by{' '}
               <strong className="text-[#701628]">{activeSup.fullName}</strong>:{' '}
               <span className="font-semibold text-stone-800">
-                {assignedTeachers.map((t) => t.fullName).join(', ') || 'Assigned Faculty'}
+                {assignedSupTeachers.map((t) => t.fullName).join(', ') || 'No Assigned Teachers'}
               </span>
             </p>
           </div>
@@ -278,7 +393,36 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
     );
   }
 
-  if (currentUser.role === 'teacher' && activeSup) {
+  if (currentUser.role === 'mentor' && activeMentor) {
+    return (
+      <div className="bg-violet-50/90 border border-violet-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
+        <div className="flex items-start sm:items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-violet-800 text-amber-200 shrink-0">
+            <BookMarked className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-violet-800 text-white">
+                Mentor Account — Private Scope
+              </span>
+              <span className="text-xs font-bold text-stone-900">
+                {activeMentor.fullName} ({activeMentor.position} · {activeMentor.department})
+              </span>
+            </div>
+            <p className="text-[11px] text-stone-600 mt-0.5">
+              Authorized Domains: <strong>Lesson Plans</strong>, <strong>Formative &amp; Summative Assessments</strong>, and{' '}
+              <strong>IMs &amp; LMs</strong>. Assigned Mentees:{' '}
+              <span className="font-semibold text-violet-950">
+                {assignedMentorTeachers.map((t) => t.fullName).join(', ') || 'No Assigned Teachers'}
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentUser.role === 'teacher') {
     return (
       <div className="bg-emerald-50/90 border border-emerald-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs">
         <div className="flex items-start sm:items-center gap-2.5">
@@ -288,16 +432,22 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-800 text-white">
-                Teacher Account — Instructional Supervisor Group
+                Teacher Private Account Scope
               </span>
-              <span className="text-xs font-bold text-stone-900">
-                Evaluated &amp; Monitored by: {activeSup.fullName} ({activeSup.position})
-              </span>
+              {activeSup && (
+                <span className="text-xs font-bold text-stone-900">
+                  Instructional Supervisor: {activeSup.fullName}
+                </span>
+              )}
+              {activeMentor && (
+                <span className="text-xs font-bold text-violet-900">
+                  · Mentor: {activeMentor.fullName}
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-stone-600 mt-0.5">
-              Signed in as <strong className="text-stone-900">{currentUser.fullName}</strong> ·
-              Displaying output tables under your assigned Instructional Supervisor{' '}
-              <strong className="text-emerald-900">{activeSup.fullName}</strong>.
+              Signed in as <strong className="text-stone-900">{currentUser.fullName}</strong>. For strict
+              data privacy, only your own evaluations and generated PMCF / FAR reports are visible here.
             </p>
           </div>
         </div>
@@ -310,7 +460,7 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
       <div className="flex items-center gap-2">
         <ShieldCheck className="w-4 h-4 text-[#701628] shrink-0" />
         <span className="text-xs font-bold text-stone-800">
-          Display Output by Instructional Supervisor:
+          Administrator Consolidation — Filter by Instructional Supervisor:
         </span>
       </div>
       {onChangeSupervisorFilterId && (
@@ -324,7 +474,7 @@ export const SupervisionScopeBanner: React.FC<SupervisionScopeBannerProps> = ({
                 : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
             }`}
           >
-            All Instructional Supervisors ({supervisors.length})
+            All Supervisors &amp; Mentors ({supervisors.length})
           </button>
           {supervisors.map((sup) => (
             <button

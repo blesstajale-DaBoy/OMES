@@ -374,46 +374,69 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
   lessonPlans,
   assessments,
 }) => {
-  const { currentUser, isAdmin, isSupervisor, isTeacher } = useAuth();
-  const { supervisors, schoolProfile, addNotification, logAuditEvent } = useData();
+  const { currentUser, isAdmin, isSupervisor, isMentor, isTeacher } = useAuth();
+  const { supervisors, mentors, schoolProfile, addNotification, logAuditEvent } = useData();
 
   const [selectedTerm, setSelectedTerm] = useState<MonitoringTermKey>('Term1');
   const [activeToolFilter, setActiveToolFilter] = useState<'ALL' | MonitoringToolKey>('ALL');
   const [printingTool, setPrintingTool] = useState<MonitoringToolKey | null>(null);
 
+  const activeMentor = useMemo(() => {
+    if (!isMentor || !currentUser) return undefined;
+    const normName = currentUser.fullName.trim().toLowerCase();
+    return (
+      mentors.find(
+        (m) =>
+          m.id === currentUser.mentorId ||
+          m.id === currentUser.id ||
+          m.fullName.trim().toLowerCase() === normName
+      ) || mentors[0]
+    );
+  }, [isMentor, currentUser, mentors]);
+
   // View Mode:
   // - Admin views 'consolidated' (Consolidates all Instructional Supervisors' reports)
-  // - Instructional Supervisor views 'supervisor' (Encodes & sends their report to Admin)
+  // - Instructional Supervisor & Mentor view 'supervisor' (Encoding Workspace for their own account)
   const [viewMode, setViewMode] = useState<'consolidated' | 'supervisor'>(() =>
-    isSupervisor ? 'supervisor' : 'consolidated'
+    isSupervisor || isMentor ? 'supervisor' : 'consolidated'
   );
 
-  // Selected Supervisor ID when in 'supervisor' encoding mode
+  // Selected Supervisor (or Mentor) Store Key when in encoding mode
   const defaultSupervisorId = useMemo(() => {
-    if (currentUser.supervisorId && supervisors.some((s) => s.id === currentUser.supervisorId)) {
+    if (isMentor && activeMentor) {
+      return `mentor-${activeMentor.id}`;
+    }
+    if (currentUser?.supervisorId && supervisors.some((s) => s.id === currentUser.supervisorId)) {
       return currentUser.supervisorId;
     }
-    if (supervisors.some((s) => s.id === currentUser.id)) {
+    if (currentUser?.id && supervisors.some((s) => s.id === currentUser.id)) {
       return currentUser.id;
     }
-    // Default to first departmental Instructional Supervisor (e.g., sup-1) or first supervisor
     return supervisors.find((s) => s.id === 'sup-1')?.id || supervisors[0]?.id || 'sup-1';
-  }, [currentUser, supervisors]);
+  }, [currentUser, supervisors, isMentor, activeMentor]);
 
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>(defaultSupervisorId);
   const [statusToast, setStatusToast] = useState<string | null>(null);
 
-  // Sync viewMode and selectedSupervisorId when user switches account role in Header
+  // Sync viewMode, selectedSupervisorId, and activeToolFilter when user switches account role
   useEffect(() => {
-    if (isSupervisor) {
+    if (isMentor && activeMentor) {
       setViewMode('supervisor');
-      if (currentUser.supervisorId) {
+      setSelectedSupervisorId(`mentor-${activeMentor.id}`);
+      if (activeToolFilter === 'classroom' || activeToolFilter === 'fleeting') {
+        setActiveToolFilter('ALL');
+      }
+    } else if (isSupervisor) {
+      setViewMode('supervisor');
+      if (currentUser?.supervisorId) {
         setSelectedSupervisorId(currentUser.supervisorId);
+      } else if (currentUser?.id && supervisors.some((s) => s.id === currentUser.id)) {
+        setSelectedSupervisorId(currentUser.id);
       }
     } else {
       setViewMode('consolidated');
     }
-  }, [isAdmin, isSupervisor, isTeacher, currentUser.supervisorId]);
+  }, [isAdmin, isSupervisor, isMentor, isTeacher, currentUser?.supervisorId, currentUser?.id, activeMentor, supervisors, activeToolFilter]);
 
   const triggerToast = (msg: string) => {
     setStatusToast(msg);
@@ -457,7 +480,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
     return buildInitialStore();
   });
 
-  // Ensure any new supervisor added dynamically has default records
+  // Ensure any new supervisor or mentor added dynamically has default records
   useEffect(() => {
     setSupervisorStore((prev) => {
       let changed = false;
@@ -473,9 +496,31 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
           changed = true;
         }
       });
+      mentors.forEach((m) => {
+        const key = `mentor-${m.id}`;
+        if (!next[key]) {
+          const mCount = m.assignedTeacherIds?.length || 2;
+          const makeDraftTerm = (seed: boolean): SupervisorTermMonitoringData => {
+            const base = createSupervisorTermDefault(m.fullName, mCount, seed);
+            return {
+              ...base,
+              classroom: { ...base.classroom, submittedToAdmin: false },
+              fleeting: { ...base.fleeting, submittedToAdmin: false },
+              lessonPlan: { ...base.lessonPlan, submittedToAdmin: false },
+              assessment: { ...base.assessment, submittedToAdmin: false },
+            };
+          };
+          next[key] = {
+            Term1: makeDraftTerm(false),
+            Term2: makeDraftTerm(false),
+            Term3: makeDraftTerm(false),
+          };
+          changed = true;
+        }
+      });
       return changed ? next : prev;
     });
-  }, [supervisors]);
+  }, [supervisors, mentors]);
 
   useEffect(() => {
     try {
@@ -485,8 +530,18 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
     }
   }, [supervisorStore]);
 
-  const activeSupervisor =
-    supervisors.find((s) => s.id === selectedSupervisorId) || supervisors[0];
+  const activeMentorEntry = selectedSupervisorId.startsWith('mentor-')
+    ? mentors.find((m) => `mentor-${m.id}` === selectedSupervisorId) || activeMentor
+    : undefined;
+
+  const activeSupervisor = activeMentorEntry
+    ? {
+        id: `mentor-${activeMentorEntry.id}`,
+        fullName: activeMentorEntry.fullName,
+        position: activeMentorEntry.position,
+        department: activeMentorEntry.department,
+      }
+    : supervisors.find((s) => s.id === selectedSupervisorId) || supervisors[0];
 
   const activeSupervisorTermData: SupervisorTermMonitoringData = useMemo(() => {
     const supData = supervisorStore[selectedSupervisorId];
@@ -494,11 +549,11 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       return supData[selectedTerm];
     }
     return createSupervisorTermDefault(
-      activeSupervisor?.fullName || 'Instructional Supervisor',
-      4,
+      activeSupervisor?.fullName || (isMentor ? 'Mentor' : 'Instructional Supervisor'),
+      activeMentorEntry ? activeMentorEntry.assignedTeacherIds?.length || 2 : 4,
       selectedTerm === 'Term3'
     );
-  }, [supervisorStore, selectedSupervisorId, selectedTerm, activeSupervisor]);
+  }, [supervisorStore, selectedSupervisorId, selectedTerm, activeSupervisor, isMentor, activeMentorEntry]);
 
   // ============================================================================
   // CONSOLIDATION ENGINE: Automatically sums every Instructional Supervisor's report
@@ -740,7 +795,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       hour: '2-digit',
       minute: '2-digit',
     });
-    const supName = activeSupervisor?.fullName || currentUser.fullName;
+    const supName = activeSupervisor?.fullName || currentUser?.fullName || (isMentor ? 'Mentor' : 'Instructional Supervisor');
 
     setSupervisorStore((prev) => {
       const supTerm = prev[selectedSupervisorId]?.[selectedTerm] || activeSupervisorTermData;
@@ -778,7 +833,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       targetId: `${selectedSupervisorId}-${selectedTerm}-${tool}`,
       targetName: `${toolTitles[tool]} (${selectedTerm})`,
       actorName: supName,
-      actorRole: currentUser.role || 'supervisor',
+      actorRole: currentUser?.role || (isMentor ? 'mentor' : 'supervisor'),
       details: `${supName} encoded and submitted ${toolTitles[tool]} (${selectedTerm}) to the Administrator Reports & Links Section for consolidation.`,
       severity: 'info',
     });
@@ -796,7 +851,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       hour: '2-digit',
       minute: '2-digit',
     });
-    const supName = activeSupervisor?.fullName || currentUser.fullName;
+    const supName = activeSupervisor?.fullName || currentUser?.fullName || (isMentor ? 'Mentor' : 'Instructional Supervisor');
 
     setSupervisorStore((prev) => {
       const supTerm = prev[selectedSupervisorId]?.[selectedTerm] || activeSupervisorTermData;
@@ -807,13 +862,13 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
           [selectedTerm]: {
             classroom: {
               ...supTerm.classroom,
-              submittedToAdmin: true,
+              submittedToAdmin: isMentor ? false : true,
               submittedAt: nowStr,
               submittedByName: supName,
             },
             fleeting: {
               ...supTerm.fleeting,
-              submittedToAdmin: true,
+              submittedToAdmin: isMentor ? false : true,
               submittedAt: nowStr,
               submittedByName: supName,
             },
@@ -838,8 +893,12 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       recipientTeacherId: 'admin',
       recipientTeacherName: 'Administrator',
       type: 'observation_scheduled',
-      title: `All 4 M & E Reports Sent to Admin (${selectedTerm})`,
-      message: `${supName} submitted all 4 M & E Monitoring Tool reports for ${selectedTerm} to the Administrator Reports & Links Section.`,
+      title: isMentor
+        ? `Mentor M & E Reports Sent to Admin (${selectedTerm})`
+        : `All 4 M & E Reports Sent to Admin (${selectedTerm})`,
+      message: isMentor
+        ? `${supName} submitted Lesson Plan and Assessment M & E reports for ${selectedTerm} to the Administrator Reports & Links Section.`
+        : `${supName} submitted all 4 M & E Monitoring Tool reports for ${selectedTerm} to the Administrator Reports & Links Section.`,
       targetTab: 'observation',
       supervisorName: supName,
       statusBadge: 'Consolidated',
@@ -849,10 +908,12 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       category: 'Classroom Observation (COT)',
       action: 'UPDATE',
       targetId: `${selectedSupervisorId}-${selectedTerm}-ALL`,
-      targetName: `All 4 M & E Monitoring Tool Reports (${selectedTerm})`,
+      targetName: isMentor
+        ? `Mentor Lesson Plan & Assessment Reports (${selectedTerm})`
+        : `All 4 M & E Monitoring Tool Reports (${selectedTerm})`,
       actorName: supName,
-      actorRole: currentUser.role || 'supervisor',
-      details: `${supName} submitted all 4 M & E Monitoring Tool tables (${selectedTerm}) to Administrator Consolidated Report.`,
+      actorRole: currentUser?.role || (isMentor ? 'mentor' : 'supervisor'),
+      details: `${supName} submitted ${isMentor ? 'Lesson Plan & Assessment' : 'all 4'} M & E Monitoring Tool tables (${selectedTerm}) to Administrator Consolidated Report.`,
       severity: 'info',
     });
 
@@ -1254,10 +1315,10 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
     });
     const preparedByName = isConsolidated
       ? `All Instructional Supervisors (${supervisors.length} Supervisors Consolidated)`
-      : activeSupervisor?.fullName || currentUser.fullName;
+      : activeSupervisor?.fullName || currentUser?.fullName || '';
     const preparedByRole = isConsolidated
       ? 'Consolidated Instructional Supervision Report'
-      : `${activeSupervisor?.position || 'Instructional Supervisor'} — ${activeSupervisor?.department || ''}`;
+      : `${activeSupervisor?.position || (isMentor ? 'Mentor' : 'Instructional Supervisor')} — ${activeSupervisor?.department || ''}`;
     const totalTeachersCount = isConsolidated
       ? consolidatedTermData[tool].teacherCount
       : activeSupervisorTermData[tool].teacherCount;
@@ -1293,18 +1354,18 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
     <p>Caraga Administrative Region XIII · Schools Division of Surigao del Sur</p>
     <h2>${escapeHtml(schoolProfile.schoolName)}</h2>
     <p>School ID: ${escapeHtml(schoolProfile.schoolId)} · ${escapeHtml(schoolProfile.address)}</p>
-    <div class="title-banner">${escapeHtml(meta.title)} — ${isConsolidated ? 'CONSOLIDATED SCHOOL REPORT' : 'INSTRUCTIONAL SUPERVISOR REPORT'}</div>
+    <div class="title-banner">${escapeHtml(meta.title)} — ${isConsolidated ? 'CONSOLIDATED SCHOOL REPORT' : isMentor ? 'MENTOR MONITORING REPORT' : 'INSTRUCTIONAL SUPERVISOR REPORT'}</div>
   </div>
   <div class="meta-grid">
-    <div><strong>Report Type:</strong> ${isConsolidated ? `Consolidated (${supervisors.length} Supervisors)` : 'Supervisor Report'}</div>
-    <div><strong>Supervisor / Scope:</strong> ${escapeHtml(preparedByName)}</div>
+    <div><strong>Report Type:</strong> ${isConsolidated ? `Consolidated (${supervisors.length} Supervisors)` : isMentor ? 'Mentor Report' : 'Supervisor Report'}</div>
+    <div><strong>${isMentor ? 'Mentor' : 'Supervisor'} / Scope:</strong> ${escapeHtml(preparedByName)}</div>
     <div><strong>Supervisory Term:</strong> ${escapeHtml(selectedTerm.replace('Term', 'Term '))} (SY 2026–2027)</div>
     <div><strong>Teachers Covered:</strong> ${totalTeachersCount} Teachers · <strong>Date:</strong> ${escapeHtml(currentDateFormatted)}</div>
   </div>
   ${tableMarkup}
   <div class="signatories">
     <div>
-      <div class="sign-line">${escapeHtml( isConsolidated ? currentUser.fullName : activeSupervisor?.fullName || currentUser.fullName )}</div>
+      <div class="sign-line">${escapeHtml(isConsolidated ? currentUser?.fullName || '' : activeSupervisor?.fullName || currentUser?.fullName || '')}</div>
       <div class="sign-title">Prepared by: ${escapeHtml(preparedByRole)}</div>
     </div>
     <div>
@@ -1411,7 +1472,9 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
               <span className="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded bg-amber-400 text-stone-950">
                 {isConsolidated
                   ? 'Administrator Consolidated Report'
-                  : 'Instructional Supervisor Encoding Workspace'}
+                  : isMentor
+                    ? 'Mentor M & E Encoding Workspace'
+                    : 'Instructional Supervisor Encoding Workspace'}
               </span>
               <span className="text-[11px] text-amber-200 font-medium">
                 • {selectedTerm.replace('Term', 'Term ')} (SY 2026–2027)
@@ -1420,12 +1483,16 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
             <h3 className="text-sm sm:text-base font-bold mt-1">
               {isConsolidated
                 ? 'Consolidated M & E Tool Report of All Instructional Supervisors'
-                : `Encode & Submit M & E Monitoring Tool Data — ${activeSupervisor?.fullName || ''}`}
+                : isMentor
+                  ? `Mentor Lesson Plan & Assessment M & E Workspace — ${activeSupervisor?.fullName || ''}`
+                  : `Encode & Submit M & E Monitoring Tool Data — ${activeSupervisor?.fullName || ''}`}
             </h3>
             <p className="text-xs text-stone-200 mt-0.5">
               {isConsolidated
                 ? 'Automatically consolidates E counts, NE counts, Number of Teachers, Percentages, and STAR Evidence Notes submitted by every Instructional Supervisor.'
-                : 'Encode your E, NE, Number of Teachers, and Remarks/STAR Notes below, then click "Send Report to Administrator" to consolidate into the School Administrator Report.'}
+                : isMentor
+                  ? 'Encode E, NE, Number of Teachers, and STAR Evidence Notes for Lesson Plans and Assessments within your assigned mentee scope, then send to Administrator.'
+                  : 'Encode your E, NE, Number of Teachers, and Remarks/STAR Notes below, then click "Send Report to Administrator" to consolidate into the School Administrator Report.'}
             </p>
           </div>
 
@@ -1462,26 +1529,32 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
           )}
         </div>
 
-        {/* Sub-Bar: Supervisor Selector (when Encoding) OR Consolidation Status Grid (when Consolidated) */}
+        {/* Sub-Bar: Supervisor/Mentor Encoding Header OR Consolidation Status Grid */}
         {viewMode === 'supervisor' ? (
           <div className="p-4 bg-amber-50/60 border-b border-stone-200 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div>
-                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500 mb-1">
-                  Encoding Instructional Supervisor
-                </label>
-                <select
-                  value={selectedSupervisorId}
-                  onChange={(e) => setSelectedSupervisorId(e.target.value)}
-                  className="text-xs font-bold border border-stone-300 rounded-lg px-3 py-2 bg-white text-stone-900 shadow-2xs min-w-[260px]"
-                >
-                  {supervisors.map((sup) => (
-                    <option key={sup.id} value={sup.id}>
-                      {sup.fullName} — {sup.position} ({sup.department})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {isMentor ? (
+                <div className="px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-xs font-bold text-violet-950">
+                  Mentor: {activeSupervisor?.fullName} — {activeSupervisor?.position} ({activeSupervisor?.department})
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-stone-500 mb-1">
+                    Encoding Instructional Supervisor
+                  </label>
+                  <select
+                    value={selectedSupervisorId}
+                    onChange={(e) => setSelectedSupervisorId(e.target.value)}
+                    className="text-xs font-bold border border-stone-300 rounded-lg px-3 py-2 bg-white text-stone-900 shadow-2xs min-w-[260px]"
+                  >
+                    {supervisors.map((sup) => (
+                      <option key={sup.id} value={sup.id}>
+                        {sup.fullName} — {sup.position} ({sup.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="text-xs text-stone-600 space-y-0.5 sm:pt-4">
                 <div className="font-bold text-stone-800 flex items-center gap-1.5">
@@ -1493,7 +1566,9 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
                 <div className="text-[11px] text-stone-500">
                   Last sent to Admin:{' '}
                   <span className="font-semibold text-emerald-800">
-                    {activeSupervisorTermData.classroom.submittedAt || 'Ready to send'}
+                    {(isMentor
+                      ? activeSupervisorTermData.lessonPlan.submittedAt
+                      : activeSupervisorTermData.classroom.submittedAt) || 'Ready to send'}
                   </span>
                 </div>
               </div>
@@ -1506,7 +1581,11 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold shadow-xs transition-colors cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5 text-amber-200" />
-                <span>Send All 4 M &amp; E Reports to Administrator ({selectedTerm})</span>
+                <span>
+                  {isMentor
+                    ? `Send Mentor Reports to Administrator (${selectedTerm})`
+                    : `Send All 4 M & E Reports to Administrator (${selectedTerm})`}
+                </span>
               </button>
             </div>
           </div>
@@ -1639,11 +1718,19 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
               onChange={(e) => setActiveToolFilter(e.target.value as any)}
               className="text-xs font-bold border border-stone-300 rounded-lg px-3 py-1.5 bg-white text-stone-800"
             >
-              <option value="ALL">Show All 4 M &amp; E Tool Tables</option>
-              <option value="classroom">
-                1. M &amp; E Tool on the Conduct of Classroom Observations
+              <option value="ALL">
+                {isMentor
+                  ? 'Show Authorized Mentor M & E Tables (Lesson Plan & Assessment)'
+                  : 'Show All 4 M & E Tool Tables'}
               </option>
-              <option value="fleeting">2. M &amp; E Fleeting Walkthrough Observation</option>
+              {!isMentor && (
+                <>
+                  <option value="classroom">
+                    1. M &amp; E Tool on the Conduct of Classroom Observations
+                  </option>
+                  <option value="fleeting">2. M &amp; E Fleeting Walkthrough Observation</option>
+                </>
+              )}
               <option value="lessonPlan">
                 3. M &amp; E Tool on the Checking-The Lesson Plan
               </option>
@@ -1656,7 +1743,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       {/* ============================================================================
           TABLE 1: M & E TOOL ON THE CONDUCT OF CLASSROOM OBSERVATIONS
       ============================================================================ */}
-      {(activeToolFilter === 'ALL' || activeToolFilter === 'classroom') && (
+      {!isMentor && (activeToolFilter === 'ALL' || activeToolFilter === 'classroom') && (
         <div className="bg-white rounded-xl border border-stone-300 shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-stone-50 border-b border-stone-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
@@ -1922,7 +2009,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       {/* ============================================================================
           TABLE 2: M & E FLEETING WALKTHROUGH OBSERVATION
       ============================================================================ */}
-      {(activeToolFilter === 'ALL' || activeToolFilter === 'fleeting') && (
+      {!isMentor && (activeToolFilter === 'ALL' || activeToolFilter === 'fleeting') && (
         <div className="bg-white rounded-xl border border-stone-300 shadow-xs overflow-hidden">
           <div className="px-4 py-3 bg-stone-50 border-b border-stone-300 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
@@ -2716,8 +2803,8 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
                   <div>
                     <div className="border-b border-stone-900 pb-1 font-bold text-stone-900">
                       {isConsolidated
-                        ? currentUser.fullName
-                        : activeSupervisor?.fullName || currentUser.fullName}
+                        ? currentUser?.fullName || 'Administrator'
+                        : activeSupervisor?.fullName || currentUser?.fullName || 'Instructional Supervisor'}
                     </div>
                     <div className="text-[10px] text-stone-500 mt-1">
                       Prepared by:{' '}

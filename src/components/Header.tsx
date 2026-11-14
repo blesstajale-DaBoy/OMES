@@ -2,6 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
 import {
+  resolveActiveMentorForUser,
+  resolveActiveSupervisorForUser,
+  resolveRecordMentor,
+  resolveRecordSupervisor,
+  MENTOR_ALLOWED_CATEGORIES,
+} from '../utils/supervisionScope';
+import {
   GraduationCap,
   ClipboardCheck,
   FileSpreadsheet,
@@ -15,7 +22,6 @@ import {
   ChevronRight,
   Menu,
   X,
-  UserCheck,
   LogOut,
   Sparkles,
   KeyRound,
@@ -59,14 +65,12 @@ export const Header: React.FC<HeaderProps> = ({
   const {
     currentUser,
     currentRole,
-    switchRoleQuick,
-    switchToSupervisor,
-    switchToTeacher,
     logout,
   } = useAuth();
   const {
     schoolProfile,
     supervisors,
+    mentors,
     teachers,
     notifications,
     markNotificationAsRead,
@@ -87,11 +91,62 @@ export const Header: React.FC<HeaderProps> = ({
 
   const navScrollRef = useRef<HTMLDivElement>(null);
 
+  const activeSup = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
+  const activeMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
+
+  const isNotificationInScope = (n: (typeof notifications)[number]) => {
+    if (!currentUser) return false;
+    if (currentRole === 'admin') return true;
+    if (currentRole === 'teacher') {
+      const targetTid = currentUser.teacherId || currentUser.id;
+      return (
+        n.recipientTeacherName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase() ||
+        n.recipientTeacherId === targetTid
+      );
+    }
+    if (currentRole === 'mentor') {
+      const mentorAllowedTab =
+        n.targetTab === 'lesson-plans' ||
+        n.targetTab === 'far-pmcf' ||
+        n.targetTab === 'ims-assessments';
+      if (!mentorAllowedTab) return false;
+      if (n.category && !MENTOR_ALLOWED_CATEGORIES.includes(n.category)) {
+        return false;
+      }
+      if (n.type === 'pmcf_far_generated' && n.evaluatorRole && n.evaluatorRole !== 'mentor') {
+        return false;
+      }
+      if (!activeMentor) return false;
+      const recMentor = resolveRecordMentor(
+        {
+          teacherId: n.recipientTeacherId,
+          teacherName: n.recipientTeacherName,
+        },
+        teachers,
+        mentors
+      );
+      return recMentor?.id === activeMentor.id;
+    }
+    if (currentRole === 'supervisor') {
+      if (!activeSup) return false;
+      const recSup = resolveRecordSupervisor(
+        {
+          teacherId: n.recipientTeacherId,
+          teacherName: n.recipientTeacherName,
+        },
+        teachers,
+        supervisors
+      );
+      return recSup?.id === activeSup.id;
+    }
+    return false;
+  };
+
   // Detect newly created notifications during the session to show an immediate toast alert
   useEffect(() => {
     if (notifications.length > prevNotifCountRef.current && notifications[0]) {
       const latest = notifications[0];
-      if (currentRole !== 'teacher' || latest.recipientTeacherName === currentUser.fullName) {
+      if (isNotificationInScope(latest)) {
         setLiveToastId(latest.id);
         const timer = setTimeout(() => {
           setLiveToastId(null);
@@ -101,14 +156,9 @@ export const Header: React.FC<HeaderProps> = ({
       }
     }
     prevNotifCountRef.current = notifications.length;
-  }, [notifications, currentRole, currentUser.fullName]);
+  }, [notifications, currentRole, currentUser?.fullName]);
 
-  const roleFilteredNotifications = notifications.filter((n) => {
-    if (currentRole === 'teacher') {
-      return n.recipientTeacherName === currentUser.fullName || n.recipientTeacherId === currentUser.id;
-    }
-    return true;
-  });
+  const roleFilteredNotifications = notifications.filter(isNotificationInScope);
 
   const visibleNotifications = roleFilteredNotifications.filter((n) => {
     if (notifTypeFilter === 'all') return true;
@@ -118,7 +168,7 @@ export const Header: React.FC<HeaderProps> = ({
   const unreadCount = roleFilteredNotifications.filter((n) => !n.read).length;
   const activeToastNotif = liveToastId ? notifications.find((n) => n.id === liveToastId) : null;
 
-  const navItems: {
+  const allNavItems: {
     id: NavTab;
     label: string;
     sublabel: string;
@@ -134,6 +184,21 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'reports', label: 'Reports & Links', sublabel: 'Exports & Drive', icon: FileSpreadsheet },
     { id: 'settings', label: 'Settings', sublabel: 'School Setup', icon: Settings },
   ];
+
+  const navItems = allNavItems.filter((item) => {
+    if (currentRole === 'admin') return true;
+    if (currentRole === 'supervisor') return item.id !== 'settings';
+    if (currentRole === 'mentor') {
+      return (
+        item.id === 'dashboard' ||
+        item.id === 'lesson-plans' ||
+        item.id === 'far-pmcf' ||
+        item.id === 'ims-assessments'
+      );
+    }
+    // teacher
+    return item.id !== 'roster' && item.id !== 'settings' && item.id !== 'audit-logs';
+  });
 
   // Check scroll capability
   const updateScrollButtons = () => {
@@ -346,7 +411,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <button
                         onClick={() =>
                           markAllNotificationsAsRead(
-                            currentRole === 'teacher' ? currentUser.fullName : undefined
+                            currentRole === 'teacher' ? currentUser?.fullName : undefined
                           )
                         }
                         className="flex items-center gap-1 px-2 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-[10px] font-bold text-amber-200 transition-colors cursor-pointer"
@@ -498,16 +563,18 @@ export const Header: React.FC<HeaderProps> = ({
                       ? 'Administrator'
                       : currentRole === 'supervisor'
                       ? 'Supervisor'
+                      : currentRole === 'mentor'
+                      ? 'Mentor'
                       : 'Teacher'}
                   </div>
                   <div className="text-[10px] text-white/80 truncate max-w-[80px] xl:max-w-[105px] font-medium">
-                    {currentUser.fullName.split(',')[0]}
+                    {(currentUser?.fullName || '').split(',')[0]}
                   </div>
                 </div>
                 <ChevronDown className="w-3 h-3 text-amber-300 ml-0.5 shrink-0" />
               </button>
 
-              {/* Role & Account Dropdown with Vertical Scrollbar */}
+              {/* Private Account & Security Dropdown (No Passwordless Role Switching) */}
               {isRoleDropdownOpen && (
                 <div
                   className="absolute right-0 mt-2 w-[calc(100vw-1.5rem)] sm:w-84 max-w-sm max-h-[calc(100vh-4.5rem)] overflow-y-auto overscroll-contain bg-white rounded-2xl shadow-2xl border border-stone-200 py-2 z-50 text-stone-800 animate-in fade-in slide-in-from-top-2 duration-150 [scrollbar-width:thin]"
@@ -515,12 +582,14 @@ export const Header: React.FC<HeaderProps> = ({
                   <div className="px-4 py-2.5 border-b border-stone-100 bg-stone-50/90 sticky top-0 z-10 flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase font-bold tracking-wider text-stone-400">
-                        Currently Authenticated
+                        Currently Authenticated ({currentRole})
                       </div>
                       <div className="text-xs font-bold text-[#701628] truncate mt-0.5">
-                        {currentUser.fullName}
+                        {currentUser?.fullName}
                       </div>
-                      <div className="text-[11px] text-stone-500 font-medium">{currentUser.title}</div>
+                      <div className="text-[11px] text-stone-500 font-medium">
+                        {currentUser?.title}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -532,188 +601,58 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
                   </div>
 
-                  <div className="py-1">
-                    <div className="px-4 py-1 text-[10px] font-bold uppercase tracking-wider text-stone-400">
-                      Switch Role & Access Control
-                    </div>
-
-                    {/* Administrator Option */}
-                    <button
-                      onClick={() => {
-                        switchRoleQuick('admin');
-                        setIsRoleDropdownOpen(false);
-                      }}
-                      className={`w-full text-left px-4 py-2 text-xs flex items-center justify-between hover:bg-amber-50 transition-colors cursor-pointer ${
-                        currentRole === 'admin' ? 'font-bold text-[#701628] bg-amber-50/70 border-l-3 border-[#701628]' : 'text-stone-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <UserCheck className="w-4 h-4 text-amber-700 shrink-0" />
-                        <div>
-                          <div className="font-semibold">Administrator</div>
-                          <div className="text-[10px] text-stone-500">Full system & personnel control</div>
+                  {/* Quick Access to Administrator Console & Personnel Control Buttons */}
+                  {currentRole === 'admin' && (
+                    <div className="border-b border-stone-200 bg-rose-50/30 divide-y divide-stone-100 py-1">
+                      <button
+                        onClick={() => {
+                          onTabChange('dashboard');
+                          setIsRoleDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-[11px] flex items-center justify-between hover:bg-rose-50 text-[#701628] font-medium transition-colors cursor-pointer"
+                        title="Open Administrator Master Console and view Audit Logs"
+                      >
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-3.5 h-3.5 text-[#701628]" />
+                          <span>Console · Audit Logs & Transparency</span>
                         </div>
-                      </div>
-                      {currentRole === 'admin' && <span className="text-xs text-[#701628] font-bold">●</span>}
-                    </button>
-
-                    {/* Quick Access to Administrator Console & Personnel Control Buttons */}
-                    {currentRole === 'admin' && (
-                      <div className="border-t border-dashed border-stone-200 bg-rose-50/30 divide-y divide-stone-100">
-                        <button
-                          onClick={() => {
-                            onTabChange('dashboard');
-                            setIsRoleDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-4 py-1.5 text-[11px] flex items-center justify-between hover:bg-rose-50 text-[#701628] font-medium transition-colors cursor-pointer"
-                          title="Open Administrator Master Console and view Audit Logs"
-                        >
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="w-3.5 h-3.5 text-[#701628]" />
-                            <span>Console · Audit Logs & Transparency</span>
-                          </div>
-                          <span className="text-[9px] font-bold bg-[#701628] text-white px-1.5 py-0.2 rounded-full">
-                            Open
-                          </span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            onTabChange('roster');
-                            setIsRoleDropdownOpen(false);
-                          }}
-                          className="w-full text-left px-4 py-1.5 text-[11px] flex items-center justify-between hover:bg-rose-50 text-[#701628] font-medium transition-colors cursor-pointer"
-                          title="Open Personnel & Roster Control"
-                        >
-                          <div className="flex items-center gap-2">
-                            <Users className="w-3.5 h-3.5 text-[#701628]" />
-                            <span>Personnel & Roster Control</span>
-                          </div>
-                          <span className="text-[9px] font-bold bg-amber-400 text-stone-950 px-1.5 py-0.2 rounded-full">
-                            Manage
-                          </span>
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Registered Instructional Supervisors Section */}
-                    <div className="mt-1 pt-1 border-t border-stone-100">
-                      <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50/70 flex items-center justify-between">
-                        <span>Instructional Supervisors ({supervisors.length})</span>
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
-                          Registered
+                        <span className="text-[9px] font-bold bg-[#701628] text-white px-1.5 py-0.2 rounded-full">
+                          Open
                         </span>
-                      </div>
-                      <div className="max-h-40 overflow-y-auto divide-y divide-stone-100/70 [scrollbar-width:thin]">
-                        {supervisors.length === 0 ? (
-                          <div className="px-4 py-2 text-[11px] text-stone-400 italic">
-                            No registered supervisors found.
-                          </div>
-                        ) : (
-                          supervisors.map((s) => {
-                            const isCurrentSupervisor =
-                              currentRole === 'supervisor' &&
-                              (currentUser.id === s.id || currentUser.fullName === s.fullName);
-                            return (
-                              <button
-                                key={s.id}
-                                onClick={() => {
-                                  switchToSupervisor(s);
-                                  setIsRoleDropdownOpen(false);
-                                }}
-                                className={`w-full text-left px-4 py-2 text-xs flex items-center justify-between hover:bg-emerald-50/80 transition-colors cursor-pointer ${
-                                  isCurrentSupervisor
-                                    ? 'font-bold text-emerald-950 bg-emerald-50 border-l-3 border-[#701628]'
-                                    : 'text-stone-700'
-                                }`}
-                                title={`Switch to ${s.fullName} (${s.position})`}
-                              >
-                                <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                                  <ShieldCheck
-                                    className={`w-4 h-4 shrink-0 ${
-                                      isCurrentSupervisor ? 'text-emerald-700' : 'text-stone-400'
-                                    }`}
-                                  />
-                                  <div className="truncate">
-                                    <div className="font-semibold text-stone-900 truncate">
-                                      {s.fullName}
-                                    </div>
-                                    <div className="text-[10px] text-stone-500 truncate">
-                                      {s.position} · {s.department}
-                                    </div>
-                                  </div>
-                                </div>
-                                {isCurrentSupervisor ? (
-                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full shrink-0">
-                                    Active
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-stone-400 shrink-0">
-                                    Switch
-                                  </span>
-                                )}
-                              </button>
-                            );
-                          })
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Registered Teaching Personnel Section */}
-                    <div className="mt-1 pt-1 border-t border-stone-100">
-                      <div className="px-4 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-800 bg-blue-50/70 flex items-center justify-between">
-                        <span>Teaching Personnel ({teachers.length})</span>
-                        <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded">
-                          Registered
+                      </button>
+                      <button
+                        onClick={() => {
+                          onTabChange('roster');
+                          setIsRoleDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-[11px] flex items-center justify-between hover:bg-rose-50 text-[#701628] font-medium transition-colors cursor-pointer"
+                        title="Open Personnel & Roster Control"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Users className="w-3.5 h-3.5 text-[#701628]" />
+                          <span>Personnel & Roster Control</span>
+                        </div>
+                        <span className="text-[9px] font-bold bg-amber-400 text-stone-950 px-1.5 py-0.2 rounded-full">
+                          Manage
                         </span>
-                      </div>
-                      <div className="max-h-40 overflow-y-auto divide-y divide-stone-100/70 [scrollbar-width:thin]">
-                        {teachers.map((t) => {
-                          const isCurrentTeacher =
-                            currentRole === 'teacher' &&
-                            (currentUser.id === t.id || currentUser.fullName === t.fullName);
-                          return (
-                            <button
-                              key={t.id}
-                              onClick={() => {
-                                switchToTeacher(t);
-                                setIsRoleDropdownOpen(false);
-                              }}
-                              className={`w-full text-left px-4 py-1.5 text-xs flex items-center justify-between hover:bg-blue-50/80 transition-colors cursor-pointer ${
-                                isCurrentTeacher
-                                  ? 'font-bold text-blue-950 bg-blue-50 border-l-3 border-[#701628]'
-                                  : 'text-stone-700'
-                              }`}
-                              title={`Switch to Teacher ${t.fullName}`}
-                            >
-                              <div className="flex items-center gap-2 min-w-0 pr-2">
-                                <GraduationCap
-                                  className={`w-3.5 h-3.5 shrink-0 ${
-                                    isCurrentTeacher ? 'text-blue-700' : 'text-stone-400'
-                                  }`}
-                                />
-                                <div className="truncate">
-                                  <div className="font-semibold text-stone-900 truncate text-[11px]">
-                                    {t.fullName}
-                                  </div>
-                                  <div className="text-[10px] text-stone-500 truncate">
-                                    {t.position} - {t.subject || 'Faculty'}
-                                  </div>
-                                </div>
-                              </div>
-                              {isCurrentTeacher ? (
-                                <span className="text-[10px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full shrink-0">
-                                  Active
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-stone-400 shrink-0">
-                                  Switch
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      </button>
                     </div>
+                  )}
+
+                  {/* Privacy Scope Summary */}
+                  <div className="mx-2 my-2 p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-[11px] text-amber-950">
+                    <div className="font-bold text-[#701628] mb-0.5">
+                      Password-Protected Session Isolation
+                    </div>
+                    <p className="text-[10px] leading-snug text-stone-700">
+                      {currentRole === 'admin'
+                        ? 'Consolidated school oversight across all Supervisors, Mentors & Teachers.'
+                        : currentRole === 'supervisor'
+                        ? 'Viewing only your assigned teachers and their monitoring & PMCF/FAR reports.'
+                        : currentRole === 'mentor'
+                        ? 'Mentor scope: Lesson Plans, Assessments, IMs & LMs for your assigned teachers.'
+                        : 'Personal privacy active: showing only your own records and your own PMCF/FAR reports.'}
+                    </p>
                   </div>
 
                   {/* Cloud Storage & Publish Integrity Card */}
@@ -728,7 +667,7 @@ export const Header: React.FC<HeaderProps> = ({
                       </span>
                     </div>
                     <p className="text-[10px] text-emerald-800 leading-snug">
-                      Personnel roster, supervisory assignments, and COT records are permanently saved to Google Cloud Firestore. When you publish, your modifications remain 100% intact.
+                      Personnel roster, supervisory/mentor assignments, and M&E records sync to Cloud Firestore.
                     </p>
                     {lastCloudSyncTime && (
                       <div className="text-[9px] text-emerald-700 mt-1 font-mono">
@@ -762,7 +701,7 @@ export const Header: React.FC<HeaderProps> = ({
                       <span>Change Account Password</span>
                     </button>
 
-                    {onOpenForgotPassword && (
+                    {(currentRole === 'supervisor' || currentRole === 'mentor') && onOpenForgotPassword && (
                       <button
                         onClick={() => {
                           setIsRoleDropdownOpen(false);
@@ -771,7 +710,7 @@ export const Header: React.FC<HeaderProps> = ({
                         className="w-full text-left px-3 py-2 rounded-lg text-xs text-amber-900 bg-amber-50 hover:bg-amber-100/80 flex items-center gap-2.5 font-bold transition-colors cursor-pointer"
                       >
                         <ShieldCheck className="w-4 h-4 text-amber-700" />
-                        <span>Supervisor Password Reset (OTP)</span>
+                        <span>Account Password Reset (OTP)</span>
                       </button>
                     )}
 
@@ -851,8 +790,8 @@ export const Header: React.FC<HeaderProps> = ({
 
           <div className="pt-2 border-t border-amber-500/20 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-amber-200">
             <span>School ID: {schoolProfile.schoolId}</span>
-            <div className="flex items-center gap-3">
-              {onOpenForgotPassword && (
+            <div className="flex flex-wrap items-center gap-3">
+              {(currentRole === 'supervisor' || currentRole === 'mentor') && onOpenForgotPassword && (
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
@@ -861,7 +800,7 @@ export const Header: React.FC<HeaderProps> = ({
                   className="font-bold underline text-amber-300 flex items-center gap-1"
                 >
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Reset Supervisor Password</span>
+                  <span>Reset Password (OTP)</span>
                 </button>
               )}
               <button
@@ -871,7 +810,16 @@ export const Header: React.FC<HeaderProps> = ({
                 }}
                 className="font-bold underline text-amber-300"
               >
-                Sign In
+                Switch Account
+              </button>
+              <button
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  logout();
+                }}
+                className="font-bold underline text-rose-200"
+              >
+                Sign Out
               </button>
             </div>
           </div>

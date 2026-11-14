@@ -13,6 +13,7 @@
         "subject": { "type": "string", "description": "Specialization or subject taught" },
         "gradeLevels": { "type": "array", "description": "Grade levels assigned" },
         "assignedSupervisorId": { "type": "string", "description": "Assigned instructional supervisor ID" },
+        "assignedMentorId": { "type": "string", "description": "Assigned mentor ID" },
         "email": { "type": "string", "description": "Official email address" },
         "status": { "type": "string", "description": "Employment status" },
         "observationsCompleted": { "type": "number", "description": "Number of completed COTs" },
@@ -34,6 +35,25 @@
         "phone": { "type": "string", "description": "Contact number" },
         "assignedTeacherIds": { "type": "array", "description": "Array of assigned mentee teacher IDs" },
         "totalObservationsThisTerm": { "type": "number", "description": "Total observations conducted" },
+        "driveUrl": { "type": "string", "description": "Google Drive folder link" }
+      },
+      "required": ["id", "fullName", "position", "department"]
+    },
+    "Mentor": {
+      "title": "Mentor",
+      "description": "Assigned teacher mentor managing Lesson Plans, Assessments, and IMs/LMs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique mentor identifier" },
+        "employeeId": { "type": "string", "description": "DepEd Employee ID" },
+        "fullName": { "type": "string", "description": "Full name" },
+        "position": { "type": "string", "description": "Official mentor position" },
+        "department": { "type": "string", "description": "Department" },
+        "subjectArea": { "type": "string", "description": "Mentoring specialization" },
+        "email": { "type": "string", "description": "Email address" },
+        "phone": { "type": "string", "description": "Contact number" },
+        "assignedTeacherIds": { "type": "array", "description": "Array of assigned mentee teacher IDs" },
+        "totalEvaluationsThisTerm": { "type": "number", "description": "Total mentor evaluations conducted" },
         "driveUrl": { "type": "string", "description": "Google Drive folder link" }
       },
       "required": ["id", "fullName", "position", "department"]
@@ -91,6 +111,10 @@
     "/supervisors/{supervisorId}": {
       "schema": "Supervisor",
       "description": "Collection of instructional supervisors and School Principal"
+    },
+    "/mentors/{mentorId}": {
+      "schema": "Mentor",
+      "description": "Collection of instructional mentors"
     },
     "/observations/{observationId}": {
       "schema": "Observation",

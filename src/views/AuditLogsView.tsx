@@ -219,9 +219,9 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({
       action: 'UPDATE',
       targetId: 'school-audit-check',
       targetName: 'DepEd Roster Compliance Verification',
-      actorName: currentUser.fullName || 'Administrator',
-      actorRole: currentUser.role || 'admin',
-      details: `Administrative transparency check validated at ${new Date().toLocaleTimeString()} by ${currentUser.fullName}. All teacher records and supervisory assignments verified in good standing.`,
+      actorName: currentUser?.fullName || 'Administrator',
+      actorRole: currentUser?.role || 'admin',
+      details: `Administrative transparency check validated at ${new Date().toLocaleTimeString()} by ${currentUser?.fullName || 'Administrator'}. All teacher records and supervisory assignments verified in good standing.`,
       severity: 'notice',
       changesSummary: [
         { field: 'Verification State', previousValue: 'Unverified', newValue: 'Fully Verified' },
@@ -229,6 +229,22 @@ export const AuditLogsView: React.FC<AuditLogsViewProps> = ({
       ],
     });
   };
+
+  if (!isAdmin) {
+    return (
+      <div className="bg-white rounded-2xl border border-stone-200 p-8 shadow-xs max-w-xl mx-auto my-8 text-center space-y-3">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-rose-50 text-[#701628] mx-auto">
+          <ShieldCheck className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-stone-900">
+          Administrator Access Required
+        </h2>
+        <p className="text-xs text-stone-600 leading-relaxed">
+          System Audit Registry and school-wide activity logs are restricted to School Administrator accounts only to preserve role privacy across Instructional Supervisors, Mentors, and Teachers.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -179,7 +179,7 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
     verifyFarRecord,
     deleteFarRecord,
   } = useData();
-  const { currentUser, isAdmin, isSupervisor, isTeacher } = useAuth();
+  const { currentUser, isAdmin, isSupervisor, isTeacher, isMentor } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSupervisorFilterId, setSelectedSupervisorFilterId] = useState('All');
@@ -191,6 +191,7 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
   const [modalObservationType, setModalObservationType] = useState<'cot-pmes' | 'classroom'>('cot-pmes');
 
   const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors);
+  const modalTeachers = scopedTeachers.length > 0 ? scopedTeachers : teachers;
 
   // Export Classroom Observation Table PDF Modal State
   const [isExportClassroomPdfOpen, setIsExportClassroomPdfOpen] = useState(false);
@@ -275,11 +276,22 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
 
   const [indicatorComments, setIndicatorComments] = useState<Record<number, string>>({});
 
-  // Available Teacher Names and Grade Levels for filter dropdowns
+  // Available Teacher Names and Grade Levels for filter dropdowns (strictly scoped)
+  const visibleTeachersForFilter = isAdmin ? teachers : scopedTeachers;
   const teacherFilterOptions = Array.from(
     new Set([
-      ...teachers.map((t) => t.fullName),
-      ...observations.map((o) => o.teacherName),
+      ...visibleTeachersForFilter.map((t) => t.fullName),
+      ...observations
+        .filter((o) =>
+          matchesRoleSupervisionScope(
+            o,
+            currentUser,
+            teachers,
+            supervisors,
+            selectedSupervisorFilterId
+          )
+        )
+        .map((o) => o.teacherName),
     ])
   ).sort();
 
@@ -445,8 +457,8 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
         category: 'cot-pmes',
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || currentUser?.id || 'system',
+        supervisorName: resolvedSup?.fullName || currentUser?.fullName || 'Instructional Supervisor',
         date: new Date().toISOString().slice(0, 10),
         quarterTerm: pmcfQuarterTerm,
         criticalIncidentDescription: pmcfCriticalIncidentDescription,
@@ -515,8 +527,8 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
         category: 'cot-pmes',
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || currentUser?.id || 'system',
+        supervisorName: resolvedSup?.fullName || currentUser?.fullName || 'Instructional Supervisor',
         term: farTerm,
         lessonPlanWeek: farLessonPlanWeek.trim() || 'Week 1',
         findings: farFindings.trim(),
@@ -585,8 +597,10 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
         }));
 
     const selectedSupervisor = supervisors.find((s) => s.id === selectedSupervisorId);
-    const observerId = selectedSupervisor ? selectedSupervisor.id : currentUser.id;
-    const observerName = selectedSupervisor ? selectedSupervisor.fullName : currentUser.fullName;
+    const observerId = selectedSupervisor ? selectedSupervisor.id : currentUser?.id || 'system';
+    const observerName = selectedSupervisor
+      ? selectedSupervisor.fullName
+      : currentUser?.fullName || 'Instructional Supervisor';
 
     addObservation({
       evaluationType: modalObservationType,
@@ -628,6 +642,25 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
     setPreConferenceNotes('');
     setPostConferenceNotes('');
   };
+
+  if (isMentor) {
+    return (
+      <div className="bg-white rounded-2xl border border-violet-200 p-8 shadow-xs max-w-2xl mx-auto my-8 text-center space-y-3">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-violet-100 text-violet-800 mx-auto">
+          <ClipboardCheck className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-stone-900">
+          Mentor Access Scope Notice
+        </h2>
+        <p className="text-xs text-stone-600 leading-relaxed">
+          COT-PMES Classroom Observations are managed exclusively by Instructional Supervisors and the School Principal. Your Mentor account is authorized to manage{' '}
+          <strong className="text-violet-900">Lesson Plans (DLL/DLP)</strong>,{' '}
+          <strong className="text-violet-900">Formative &amp; Summative Assessments</strong>, and{' '}
+          <strong className="text-violet-900">Instructional Materials &amp; Learners&apos; Materials (IMs &amp; LMs)</strong> for your assigned mentees.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -802,9 +835,20 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
               Philippine Professional Standards for Teachers · 9 Core Indicators (Scale: 3 to 7)
             </p>
           </div>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
-            {cotPmesObservations.length} {cotPmesObservations.length === 1 ? 'Record' : 'Records'}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
+              {cotPmesObservations.length} {cotPmesObservations.length === 1 ? 'Record' : 'Records'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsExportClassroomPdfOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+              title="Print / Export COT-PMES Observation Table to PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-300" />
+              <span>Print to PDF</span>
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -1262,7 +1306,7 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
                     }}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white text-stone-900 font-semibold"
                   >
-                    {teachers.map((t) => (
+                    {modalTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department} · {t.subject || t.position})
                       </option>
@@ -1549,7 +1593,7 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
                     onChange={(e) => setPmcfTeacherId(e.target.value)}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                   >
-                    {teachers.map((t) => (
+                    {modalTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -1709,7 +1753,7 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
                   onChange={(e) => setFarTeacherId(e.target.value)}
                   className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium"
                 >
-                  {teachers.map((t) => (
+                  {modalTeachers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.fullName} ({t.department} · {t.position} - {t.subject})
                     </option>
@@ -1834,6 +1878,13 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* COT-PMES Observation Table PDF / Print Modal */}
+      <PrintClassroomObservationTableModal
+        isOpen={isExportClassroomPdfOpen}
+        onClose={() => setIsExportClassroomPdfOpen(false)}
+        records={cotPmesObservations}
+      />
 
       {/* PMCF Official DepEd PDF / Print Modal */}
       <PrintPmcfReportModal

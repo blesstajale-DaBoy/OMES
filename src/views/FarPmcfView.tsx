@@ -1,17 +1,31 @@
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { PMCFRecord, FarRecord, AssessmentRecord, getPmcfCategory, getFarCategory } from '../types';
+import {
+  PMCFRecord,
+  FarRecord,
+  AssessmentRecord,
+  FormativeTerm,
+  FormativeAssessmentRecord,
+  SummativeTerm,
+  SummativeAssessmentRecord,
+  getPmcfCategory,
+  getFarCategory,
+} from '../types';
 import { PrintFarReportModal } from '../components/PrintFarReportModal';
 import { PrintPmcfReportModal } from '../components/PrintPmcfReportModal';
 import {
   matchesRoleSupervisionScope,
   SupervisionScopeBanner,
   resolveRecordSupervisor,
+  resolveRecordMentor,
   resolveRecordSupervisorName,
   resolveActiveSupervisorForUser,
+  resolveActiveMentorForUser,
+  resolveActiveTeacherForUser,
   getScopedTeachersForModal,
 } from '../utils/supervisionScope';
+import { printTableReportToPdf } from '../utils/printTablePdf';
 import {
   FileText,
   Plus,
@@ -34,330 +48,23 @@ import {
   ExternalLink,
 } from 'lucide-react';
 
-export type FormativeTerm = 'Term 1' | 'Term 2' | 'Term 3';
-
-export interface FormativeAssessmentRecord {
-  id: string;
-  code: string;
-  date: string;
-  term: FormativeTerm;
-  teacherId: string;
-  teacherName: string;
-  subject: string;
-  gradeLevel: string;
-  section: string;
-  formativeType: string;
-  competencyTopic: string;
-  totalLearners: number;
-  masteryCount: number;
-  meanScore: number;
-  highestPossibleScore: number;
-  mps: number;
-  feedbackNotes: string;
-  status: 'Mastery Achieved' | 'Needs Remediation';
-  googleDriveLink?: string;
-  supervisorId?: string;
-  supervisorName?: string;
-}
-
-const DEFAULT_FORMATIVE_RECORDS: FormativeAssessmentRecord[] = [
-  {
-    id: 'form-1',
-    code: 'FA-2026-001',
-    date: '2026-08-18',
-    term: 'Term 1',
-    teacherId: 't-1',
-    teacherName: 'Dr. Maria Lourdes C. Santos',
-    supervisorId: 'sup-1',
-    supervisorName: 'Dr. Evelyn R. Salazar',
-    subject: 'Science 9 (Biology & Chemistry)',
-    gradeLevel: 'Grade 9',
-    section: '9 - Ruby',
-    formativeType: 'Short Quiz / Exit Ticket',
-    competencyTopic: 'Week 3: Circulatory and Respiratory Systems Gas Exchange',
-    totalLearners: 45,
-    masteryCount: 38,
-    meanScore: 16.4,
-    highestPossibleScore: 20,
-    mps: 82.0,
-    feedbackNotes: 'Strong learner mastery on gas exchange pathway; continue spiral review drills.',
-    status: 'Mastery Achieved',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-formative-term1-001',
-  },
-  {
-    id: 'form-2',
-    code: 'FA-2026-002',
-    date: '2026-11-12',
-    term: 'Term 2',
-    teacherId: 't-2',
-    teacherName: 'Juanito R. Dela Cruz',
-    supervisorId: 'sup-2',
-    supervisorName: 'Dr. Victoriano M. Reyes',
-    subject: 'Mathematics 10',
-    gradeLevel: 'Grade 10',
-    section: '10 - Galileo',
-    formativeType: 'Written Work / Seatwork',
-    competencyTopic: 'Week 4: Illustrating Polynomial Functions & Synthetic Division',
-    totalLearners: 42,
-    masteryCount: 29,
-    meanScore: 14.2,
-    highestPossibleScore: 20,
-    mps: 71.0,
-    feedbackNotes: 'Provide guided polynomial graphing worksheets and peer tutoring for 13 learners.',
-    status: 'Needs Remediation',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-formative-term2-002',
-  },
-  {
-    id: 'form-3',
-    code: 'FA-2026-003',
-    date: '2027-02-20',
-    term: 'Term 3',
-    teacherId: 't-3',
-    teacherName: 'Elena V. Magbanua',
-    supervisorId: 'sup-3',
-    supervisorName: 'Ma. Teresa L. Macaraeg',
-    subject: 'English 8 (Afro-Asian Literature)',
-    gradeLevel: 'Grade 8',
-    section: '8 - Sampaguita',
-    formativeType: 'End of Term Assessment',
-    competencyTopic: 'End of Term Integrative Formative Check: Reading Comprehension & Grammatical Cohesion',
-    totalLearners: 46,
-    masteryCount: 39,
-    meanScore: 39.5,
-    highestPossibleScore: 50,
-    mps: 79.0,
-    feedbackNotes: 'Learners met the 75% DepEd benchmark ahead of summative examination.',
-    status: 'Mastery Achieved',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-formative-term3-003',
-  },
-  {
-    id: 'form-4',
-    code: 'FA-2026-004',
-    date: '2026-09-14',
-    term: 'Term 1',
-    teacherId: 't-7',
-    teacherName: 'Clarissa A. Mendoza',
-    supervisorId: 'sup-principal',
-    supervisorName: 'Dr. Honorio B. Castellano',
-    subject: 'Araling Panlipunan 9 (Ekonomiks)',
-    gradeLevel: 'Grade 9',
-    section: '9 - Mabini',
-    formativeType: 'Short Quiz / Exit Ticket',
-    competencyTopic: 'Week 5: Interaksyon ng Demand at Supply sa Pamilihan',
-    totalLearners: 44,
-    masteryCount: 38,
-    meanScore: 17.0,
-    highestPossibleScore: 20,
-    mps: 85.0,
-    feedbackNotes: 'Exemplary formative mastery; Master Teacher modeled differentiated market simulation.',
-    status: 'Mastery Achieved',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-formative-term1-004',
-  },
-];
-
-const FORMATIVE_STORAGE_KEY = 'bnhs_omes_formative_records_v3';
-
-export type SummativeTerm = 'Term 1' | 'Term 2' | 'Term 3';
-
-export interface SummativeAssessmentRecord {
-  id: string;
-  code: string;
-  date: string;
-  term: SummativeTerm;
-  teacherId: string;
-  teacherName: string;
-  subject: string;
-  gradeLevel: string;
-  section: string;
-  summativeType: string;
-  tosVerified: 'TOS & Answer Key Verified' | 'Pending TOS Verification';
-  competencyCoverage: string;
-  totalLearners: number;
-  passedCount: number;
-  meanScore: number;
-  highestPossibleScore: number;
-  mps: number;
-  leastMasteredNotes: string;
-  status: 'Mastery Achieved' | 'Needs Remediation';
-  // 2. Summative Assessment — Term Specific Details & TOS Bloom's Cognitive Distribution
-  examinationPeriod?: string;
-  totalItems?: number;
-  qualitySignOff?: string;
-  tosAttached?: boolean;
-  bloomRemember?: number;
-  bloomUnderstand?: number;
-  bloomApply?: number;
-  bloomAnalyze?: number;
-  bloomEvaluate?: number;
-  bloomCreate?: number;
-  answerKeyVerified?: boolean;
-  tosAlignment?: string;
-  itemQualityRemarks?: string;
-  googleDriveLink?: string;
-  supervisorId?: string;
-  supervisorName?: string;
-}
-
-const DEFAULT_SUMMATIVE_RECORDS: SummativeAssessmentRecord[] = [
-  {
-    id: 'sum-1',
-    code: 'SA-2026-001',
-    date: '2026-09-25',
-    term: 'Term 1',
-    teacherId: 't-1',
-    teacherName: 'Dr. Maria Lourdes C. Santos',
-    supervisorId: 'sup-1',
-    supervisorName: 'Dr. Evelyn R. Salazar',
-    subject: 'Science 9 (Biology & Chemistry)',
-    gradeLevel: 'Grade 9',
-    section: '9 - Ruby',
-    summativeType: 'Unit / Long Summative Test',
-    tosVerified: 'TOS & Answer Key Verified',
-    competencyCoverage: 'Term 1 Units 1–2: Respiratory, Circulatory & Non-Mendelian Genetics',
-    totalLearners: 45,
-    passedCount: 40,
-    meanScore: 39.2,
-    highestPossibleScore: 50,
-    mps: 78.4,
-    leastMasteredNotes: 'Punnett square dihybrid crosses; scheduled enrichment drills.',
-    status: 'Mastery Achieved',
-    examinationPeriod: '1st Periodical / Term 1 Examination',
-    totalItems: 50,
-    qualitySignOff: 'Approved for Reproduction',
-    tosAttached: true,
-    bloomRemember: 10,
-    bloomUnderstand: 10,
-    bloomApply: 15,
-    bloomAnalyze: 8,
-    bloomEvaluate: 4,
-    bloomCreate: 3,
-    answerKeyVerified: true,
-    tosAlignment: 'Aligned (50 / 50 Items · 100% DepEd Cognitive Balance)',
-    itemQualityRemarks: 'Stems are clear and unambiguous; distractors are plausible with balanced HOTS items.',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-summative-term1-001',
-  },
-  {
-    id: 'sum-2',
-    code: 'SA-2026-002',
-    date: '2026-12-10',
-    term: 'Term 2',
-    teacherId: 't-2',
-    teacherName: 'Juanito R. Dela Cruz',
-    supervisorId: 'sup-2',
-    supervisorName: 'Dr. Victoriano M. Reyes',
-    subject: 'Mathematics 10',
-    gradeLevel: 'Grade 10',
-    section: '10 - Galileo',
-    summativeType: 'Quarterly / Term Summative Examination',
-    tosVerified: 'TOS & Answer Key Verified',
-    competencyCoverage: 'Term 2 Units 3–4: Polynomial Functions, Circles & Coordinate Geometry',
-    totalLearners: 42,
-    passedCount: 30,
-    meanScore: 36.0,
-    highestPossibleScore: 50,
-    mps: 72.0,
-    leastMasteredNotes: 'Secant and tangent theorem proofs; conduct targeted remediation clinic.',
-    status: 'Needs Remediation',
-    examinationPeriod: '2nd Periodical / Term 2 Examination',
-    totalItems: 50,
-    qualitySignOff: 'Approved with Minor Revisions',
-    tosAttached: true,
-    bloomRemember: 12,
-    bloomUnderstand: 13,
-    bloomApply: 10,
-    bloomAnalyze: 8,
-    bloomEvaluate: 5,
-    bloomCreate: 2,
-    answerKeyVerified: true,
-    tosAlignment: 'Aligned (50 / 50 Items · 100% DepEd Cognitive Balance)',
-    itemQualityRemarks: 'Revise options C and D on items #32–35 to eliminate overlapping distractor values.',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-summative-term2-002',
-  },
-  {
-    id: 'sum-3',
-    code: 'SA-2026-003',
-    date: '2027-03-18',
-    term: 'Term 3',
-    teacherId: 't-3',
-    teacherName: 'Elena V. Magbanua',
-    supervisorId: 'sup-3',
-    supervisorName: 'Ma. Teresa L. Macaraeg',
-    subject: 'English 8 (Afro-Asian Literature)',
-    gradeLevel: 'Grade 8',
-    section: '8 - Sampaguita',
-    summativeType: 'End of Term Assessment',
-    tosVerified: 'TOS & Answer Key Verified',
-    competencyCoverage: 'End of Term Comprehensive Summative Assessment: Afro-Asian Literature & Persuasive Rhetoric',
-    totalLearners: 46,
-    passedCount: 41,
-    meanScore: 41.5,
-    highestPossibleScore: 50,
-    mps: 83.0,
-    leastMasteredNotes: 'Exceeded 75% DepEd MPS benchmark across all cognitive domains.',
-    status: 'Mastery Achieved',
-    examinationPeriod: '3rd Periodical / Term 3 (End of Term) Examination',
-    totalItems: 50,
-    qualitySignOff: 'Approved for Reproduction',
-    tosAttached: true,
-    bloomRemember: 8,
-    bloomUnderstand: 12,
-    bloomApply: 12,
-    bloomAnalyze: 8,
-    bloomEvaluate: 5,
-    bloomCreate: 5,
-    answerKeyVerified: true,
-    tosAlignment: 'Aligned (50 / 50 Items · 100% DepEd Cognitive Balance)',
-    itemQualityRemarks: 'Reading passages and HOTS rubric scoring guide verified accurate.',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-summative-term3-003',
-  },
-  {
-    id: 'sum-4',
-    code: 'SA-2026-004',
-    date: '2026-10-12',
-    term: 'Term 1',
-    teacherId: 't-7',
-    teacherName: 'Clarissa A. Mendoza',
-    supervisorId: 'sup-principal',
-    supervisorName: 'Dr. Honorio B. Castellano',
-    subject: 'Araling Panlipunan 9 (Ekonomiks)',
-    gradeLevel: 'Grade 9',
-    section: '9 - Mabini',
-    summativeType: 'Quarterly / Term Summative Examination',
-    tosVerified: 'TOS & Answer Key Verified',
-    competencyCoverage: 'Term 1 Ekonomiks: Konsepto ng Kakapusan, Alokasyon, Demand at Supply',
-    totalLearners: 44,
-    passedCount: 40,
-    meanScore: 42.2,
-    highestPossibleScore: 50,
-    mps: 84.4,
-    leastMasteredNotes: 'Computation of price elasticity coefficients; enrichment peer-coaching completed.',
-    status: 'Mastery Achieved',
-    examinationPeriod: '1st Periodical / Term 1 Examination',
-    totalItems: 50,
-    qualitySignOff: 'Approved for Reproduction',
-    tosAttached: true,
-    bloomRemember: 8,
-    bloomUnderstand: 10,
-    bloomApply: 14,
-    bloomAnalyze: 10,
-    bloomEvaluate: 5,
-    bloomCreate: 3,
-    answerKeyVerified: true,
-    tosAlignment: 'Aligned (50 / 50 Items · 100% DepEd Cognitive Balance)',
-    itemQualityRemarks: 'TOS cognitive distribution and economic case analysis items verified by School Principal.',
-    googleDriveLink: 'https://drive.google.com/drive/folders/bnhs-summative-term1-004',
-  },
-];
-
-const SUMMATIVE_STORAGE_KEY = 'bnhs_omes_summative_records_v4';
+export type {
+  FormativeTerm,
+  FormativeAssessmentRecord,
+  SummativeTerm,
+  SummativeAssessmentRecord,
+};
 
 export const FarPmcfView: React.FC = () => {
   const {
     pmcfRecords,
     farRecords,
     assessments,
+    formativeRecords,
+    summativeRecords,
     teachers,
     supervisors,
+    mentors,
     observations,
     lessonPlans,
     addPMCFRecord,
@@ -370,14 +77,31 @@ export const FarPmcfView: React.FC = () => {
     addAssessment,
     updateAssessment,
     deleteAssessment,
+    addFormativeRecord,
+    updateFormativeRecord,
+    deleteFormativeRecord,
+    addSummativeRecord,
+    updateSummativeRecord,
+    deleteSummativeRecord,
+    schoolProfile,
   } = useData();
-  const { currentUser, isAdmin, isTeacher } = useAuth();
+  const { currentUser, isAdmin, isMentor, isTeacher } = useAuth();
   const [selectedSupervisorFilterId, setSelectedSupervisorFilterId] = useState('All');
-  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors);
+  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors, mentors);
+  const activeMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
+  const activeTeacher = resolveActiveTeacherForUser(currentUser, teachers);
 
-  // Progress bar metrics: Completed Observations & Lesson Plan Checks vs. Total Teachers
-  const totalTeachersCount = Math.max(teachers.length, 1);
-  const completedObservationsList = observations.filter((o) => o.status === 'Completed');
+  const scopedObservations = observations.filter((o) =>
+    matchesRoleSupervisionScope(o, currentUser, teachers, supervisors, selectedSupervisorFilterId, mentors)
+  );
+  const scopedLessonPlans = lessonPlans.filter((lp) =>
+    matchesRoleSupervisionScope(lp, currentUser, teachers, supervisors, selectedSupervisorFilterId, mentors)
+  );
+
+  // Scoped progress bar metrics respecting privacy boundaries
+  const displayTeacherPool = isAdmin && selectedSupervisorFilterId === 'All' ? teachers : scopedTeachers;
+  const totalTeachersCount = Math.max(displayTeacherPool.length, 1);
+  const completedObservationsList = scopedObservations.filter((o) => o.status === 'Completed');
   const completedObservationsCount = completedObservationsList.length;
   const uniqueTeachersObservedCount = new Set(
     completedObservationsList.map((o) => o.teacherId || o.teacherName)
@@ -391,10 +115,10 @@ export const FarPmcfView: React.FC = () => {
     Math.round((uniqueTeachersObservedCount / totalTeachersCount) * 100)
   );
 
-  const completedLessonPlansList = lessonPlans.filter(
+  const completedLessonPlansList = scopedLessonPlans.filter(
     (lp) => lp.status === 'Approved' || lp.status === 'Needs Revision'
   );
-  const approvedLessonPlansCount = lessonPlans.filter((lp) => lp.status === 'Approved').length;
+  const approvedLessonPlansCount = scopedLessonPlans.filter((lp) => lp.status === 'Approved').length;
   const completedLessonPlanChecksCount = completedLessonPlansList.length;
   const uniqueTeachersLessonPlanCheckedCount = new Set(
     completedLessonPlansList.map((lp) => lp.teacherId || lp.teacherName)
@@ -403,44 +127,20 @@ export const FarPmcfView: React.FC = () => {
     100,
     Math.round((completedLessonPlanChecksCount / totalTeachersCount) * 100)
   );
-  const overallSupervisionPct = Math.min(
-    100,
-    Math.round(((observationCompletionPct + lessonPlanCompletionPct) / 2))
-  );
+  const overallSupervisionPct = isMentor
+    ? lessonPlanCompletionPct
+    : Math.min(100, Math.round((observationCompletionPct + lessonPlanCompletionPct) / 2));
 
   const [searchQuery, setSearchQuery] = useState('');
-
-  // Formative Assessment State & Persistence
-  const [formativeRecords, setFormativeRecords] = useState<FormativeAssessmentRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem(FORMATIVE_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return DEFAULT_FORMATIVE_RECORDS;
-  });
-
-  const saveFormativeRecords = (updated: FormativeAssessmentRecord[]) => {
-    setFormativeRecords(updated);
-    try {
-      localStorage.setItem(FORMATIVE_STORAGE_KEY, JSON.stringify(updated));
-    } catch {
-      // ignore storage errors
-    }
-  };
 
   const [selectedFormativeTermFilter, setSelectedFormativeTermFilter] = useState<'ALL' | FormativeTerm>('ALL');
   const [isFormativeModalOpen, setIsFormativeModalOpen] = useState(false);
   const [editingFormative, setEditingFormative] = useState<FormativeAssessmentRecord | null>(null);
   const [formativeTerm, setFormativeTerm] = useState<FormativeTerm>('Term 1');
   const [formativeDate, setFormativeDate] = useState('2026-10-29');
-  const [formativeTeacherId, setFormativeTeacherId] = useState(teachers[0]?.id || '1');
-  const [formativeSubject, setFormativeSubject] = useState(teachers[0]?.department || 'Mathematics');
-  const [formativeGradeLevel, setFormativeGradeLevel] = useState(teachers[0]?.gradeLevels?.[0] || 'Grade 10');
+  const [formativeTeacherId, setFormativeTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
+  const [formativeSubject, setFormativeSubject] = useState(scopedTeachers[0]?.subject || 'Mathematics');
+  const [formativeGradeLevel, setFormativeGradeLevel] = useState(scopedTeachers[0]?.gradeLevels?.[0] || 'Grade 10');
   const [formativeSection, setFormativeSection] = useState('Section A');
   const [formativeType, setFormativeType] = useState('Short Quiz / Exit Ticket');
   const [formativeCompetency, setFormativeCompetency] = useState('');
@@ -453,15 +153,12 @@ export const FarPmcfView: React.FC = () => {
 
   const openNewFormativeModal = (defaultTerm?: FormativeTerm) => {
     setEditingFormative(null);
-    const defaultTeacher =
-      (isTeacher && currentUser
-        ? teachers.find((t) => t.id === currentUser.id || t.fullName === currentUser.fullName)
-        : undefined) || teachers[0];
+    const defaultTeacher = activeTeacher || scopedTeachers[0] || teachers[0];
     const targetTerm = defaultTerm || (selectedFormativeTermFilter !== 'ALL' ? selectedFormativeTermFilter : 'Term 1');
     setFormativeTerm(targetTerm);
     setFormativeDate(new Date().toISOString().split('T')[0]);
-    setFormativeTeacherId(defaultTeacher?.id || '1');
-    setFormativeSubject(defaultTeacher?.department || 'Mathematics');
+    setFormativeTeacherId(defaultTeacher?.id || '');
+    setFormativeSubject(defaultTeacher?.subject || defaultTeacher?.department || 'Mathematics');
     setFormativeGradeLevel(defaultTeacher?.gradeLevels?.[0] || 'Grade 10');
     setFormativeSection('Section A');
     setFormativeType(targetTerm === 'Term 3' ? 'End of Term Assessment' : 'Short Quiz / Exit Ticket');
@@ -501,42 +198,32 @@ export const FarPmcfView: React.FC = () => {
       formativeHps > 0 ? Number(((formativeMeanScore / formativeHps) * 100).toFixed(1)) : 0;
     const status: 'Mastery Achieved' | 'Needs Remediation' =
       computedMps >= 75 ? 'Mastery Achieved' : 'Needs Remediation';
+    const resolvedSup =
+      resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
+      (teacherObj
+        ? resolveRecordSupervisor({ teacherId: teacherObj.id, teacherName: teacherObj.fullName }, teachers, supervisors)
+        : undefined);
+    const resolvedMentor =
+      activeMentor ||
+      (teacherObj
+        ? resolveRecordMentor({ teacherId: teacherObj.id, teacherName: teacherObj.fullName }, teachers, mentors)
+        : undefined);
 
     if (editingFormative) {
-      const updated = formativeRecords.map((item) =>
-        item.id === editingFormative.id
-          ? {
-              ...item,
-              date: formativeDate,
-              term: formativeTerm,
-              teacherId: formativeTeacherId,
-              teacherName: teacherObj ? teacherObj.fullName : editingFormative.teacherName,
-              subject: formativeSubject,
-              gradeLevel: formativeGradeLevel,
-              section: formativeSection,
-              formativeType,
-              competencyTopic: formativeCompetency,
-              totalLearners: Number(formativeTotalLearners),
-              masteryCount: Number(formativeMasteryCount),
-              meanScore: Number(formativeMeanScore),
-              highestPossibleScore: Number(formativeHps),
-              mps: computedMps,
-              feedbackNotes: formativeFeedback,
-              status,
-              googleDriveLink: formativeGoogleDriveLink.trim(),
-            }
-          : item
-      );
-      saveFormativeRecords(updated);
-    } else {
-      const nextNum = formativeRecords.length + 1;
-      const newRecord: FormativeAssessmentRecord = {
-        id: `form-${Date.now()}`,
-        code: `FA-2026-${String(nextNum).padStart(3, '0')}`,
+      updateFormativeRecord(editingFormative.id, {
         date: formativeDate,
         term: formativeTerm,
         teacherId: formativeTeacherId,
-        teacherName: teacherObj ? teacherObj.fullName : 'Assigned Teacher',
+        teacherName: teacherObj ? teacherObj.fullName : editingFormative.teacherName,
+        supervisorId: resolvedSup?.id || editingFormative.supervisorId,
+        supervisorName: resolvedSup?.fullName || editingFormative.supervisorName,
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : editingFormative.mentorId || resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : editingFormative.mentorName || resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : editingFormative.evaluatorRole,
         subject: formativeSubject,
         gradeLevel: formativeGradeLevel,
         section: formativeSection,
@@ -550,8 +237,32 @@ export const FarPmcfView: React.FC = () => {
         feedbackNotes: formativeFeedback,
         status,
         googleDriveLink: formativeGoogleDriveLink.trim(),
-      };
-      saveFormativeRecords([newRecord, ...formativeRecords]);
+      });
+    } else {
+      addFormativeRecord({
+        date: formativeDate,
+        term: formativeTerm,
+        teacherId: formativeTeacherId,
+        teacherName: teacherObj ? teacherObj.fullName : 'Assigned Teacher',
+        supervisorId: resolvedSup?.id || (!isMentor ? currentUser?.supervisorId || currentUser?.id : ''),
+        supervisorName: resolvedSup?.fullName || (!isMentor ? currentUser?.fullName : ''),
+        mentorId: isMentor ? activeMentor?.id || currentUser?.mentorId || currentUser?.id : resolvedMentor?.id,
+        mentorName: isMentor ? activeMentor?.fullName || currentUser?.fullName : resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : isAdmin ? 'admin' : 'supervisor',
+        subject: formativeSubject,
+        gradeLevel: formativeGradeLevel,
+        section: formativeSection,
+        formativeType,
+        competencyTopic: formativeCompetency,
+        totalLearners: Number(formativeTotalLearners),
+        masteryCount: Number(formativeMasteryCount),
+        meanScore: Number(formativeMeanScore),
+        highestPossibleScore: Number(formativeHps),
+        mps: computedMps,
+        feedbackNotes: formativeFeedback,
+        status,
+        googleDriveLink: formativeGoogleDriveLink.trim(),
+      });
     }
 
     // Ensure the target Term table is visible after submission
@@ -563,30 +274,7 @@ export const FarPmcfView: React.FC = () => {
   };
 
   const handleDeleteFormative = (id: string) => {
-    saveFormativeRecords(formativeRecords.filter((r) => r.id !== id));
-  };
-
-  // Summative Assessment State & Persistence
-  const [summativeRecords, setSummativeRecords] = useState<SummativeAssessmentRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem(SUMMATIVE_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {
-      // ignore storage errors
-    }
-    return DEFAULT_SUMMATIVE_RECORDS;
-  });
-
-  const saveSummativeRecords = (updated: SummativeAssessmentRecord[]) => {
-    setSummativeRecords(updated);
-    try {
-      localStorage.setItem(SUMMATIVE_STORAGE_KEY, JSON.stringify(updated));
-    } catch {
-      // ignore storage errors
-    }
+    deleteFormativeRecord(id);
   };
 
   const [selectedSummativeTermFilter, setSelectedSummativeTermFilter] = useState<'ALL' | SummativeTerm>('ALL');
@@ -594,9 +282,9 @@ export const FarPmcfView: React.FC = () => {
   const [editingSummative, setEditingSummative] = useState<SummativeAssessmentRecord | null>(null);
   const [summativeTerm, setSummativeTerm] = useState<SummativeTerm>('Term 1');
   const [summativeDate, setSummativeDate] = useState('2026-10-29');
-  const [summativeTeacherId, setSummativeTeacherId] = useState(teachers[0]?.id || '1');
-  const [summativeSubject, setSummativeSubject] = useState(teachers[0]?.department || 'Mathematics');
-  const [summativeGradeLevel, setSummativeGradeLevel] = useState(teachers[0]?.gradeLevels?.[0] || 'Grade 10');
+  const [summativeTeacherId, setSummativeTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
+  const [summativeSubject, setSummativeSubject] = useState(scopedTeachers[0]?.subject || 'Mathematics');
+  const [summativeGradeLevel, setSummativeGradeLevel] = useState(scopedTeachers[0]?.gradeLevels?.[0] || 'Grade 10');
   const [summativeSection, setSummativeSection] = useState('Section A');
   const [summativeType, setSummativeType] = useState('Unit / Long Summative Test');
   const [summativeTosVerified, setSummativeTosVerified] = useState<'TOS & Answer Key Verified' | 'Pending TOS Verification'>('TOS & Answer Key Verified');
@@ -637,15 +325,12 @@ export const FarPmcfView: React.FC = () => {
 
   const openNewSummativeModal = (defaultTerm?: SummativeTerm) => {
     setEditingSummative(null);
-    const defaultTeacher =
-      (isTeacher && currentUser
-        ? teachers.find((t) => t.id === currentUser.id || t.fullName === currentUser.fullName)
-        : undefined) || teachers[0];
+    const defaultTeacher = activeTeacher || scopedTeachers[0] || teachers[0];
     const targetTerm = defaultTerm || (selectedSummativeTermFilter !== 'ALL' ? selectedSummativeTermFilter : 'Term 1');
     setSummativeTerm(targetTerm);
     setSummativeDate(new Date().toISOString().split('T')[0]);
-    setSummativeTeacherId(defaultTeacher?.id || '1');
-    setSummativeSubject(defaultTeacher?.department || 'Mathematics');
+    setSummativeTeacherId(defaultTeacher?.id || '');
+    setSummativeSubject(defaultTeacher?.subject || defaultTeacher?.department || 'Mathematics');
     setSummativeGradeLevel(defaultTeacher?.gradeLevels?.[0] || 'Grade 10');
     setSummativeSection('Section A');
     setSummativeType(targetTerm === 'Term 3' ? 'End of Term Assessment' : 'Unit / Long Summative Test');
@@ -728,56 +413,32 @@ export const FarPmcfView: React.FC = () => {
       summativeTosAttached && summativeAnswerKeyVerified
         ? 'TOS & Answer Key Verified'
         : summativeTosVerified;
+    const resolvedSup =
+      resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
+      (teacherObj
+        ? resolveRecordSupervisor({ teacherId: teacherObj.id, teacherName: teacherObj.fullName }, teachers, supervisors)
+        : undefined);
+    const resolvedMentor =
+      activeMentor ||
+      (teacherObj
+        ? resolveRecordMentor({ teacherId: teacherObj.id, teacherName: teacherObj.fullName }, teachers, mentors)
+        : undefined);
 
     if (editingSummative) {
-      const updated = summativeRecords.map((item) =>
-        item.id === editingSummative.id
-          ? {
-              ...item,
-              date: summativeDate,
-              term: summativeTerm,
-              teacherId: summativeTeacherId,
-              teacherName: teacherObj ? teacherObj.fullName : editingSummative.teacherName,
-              subject: summativeSubject,
-              gradeLevel: summativeGradeLevel,
-              section: summativeSection,
-              summativeType,
-              tosVerified: derivedTosVerified,
-              competencyCoverage: summativeCompetency,
-              totalLearners: Number(summativeTotalLearners),
-              passedCount: Number(summativePassedCount),
-              meanScore: Number(summativeMeanScore),
-              highestPossibleScore: Number(summativeHps),
-              mps: computedMps,
-              leastMasteredNotes: summativeLeastMastered,
-              status,
-              examinationPeriod: summativeExamPeriod,
-              totalItems: Number(summativeTotalItems),
-              qualitySignOff: summativeQualitySignOff,
-              tosAttached: summativeTosAttached,
-              bloomRemember: Number(summativeBloomRemember),
-              bloomUnderstand: Number(summativeBloomUnderstand),
-              bloomApply: Number(summativeBloomApply),
-              bloomAnalyze: Number(summativeBloomAnalyze),
-              bloomEvaluate: Number(summativeBloomEvaluate),
-              bloomCreate: Number(summativeBloomCreate),
-              answerKeyVerified: summativeAnswerKeyVerified,
-              tosAlignment: computedTosAlignmentText,
-              itemQualityRemarks: summativeItemQualityRemarks,
-              googleDriveLink: summativeGoogleDriveLink.trim(),
-            }
-          : item
-      );
-      saveSummativeRecords(updated);
-    } else {
-      const nextNum = summativeRecords.length + 1;
-      const newRecord: SummativeAssessmentRecord = {
-        id: `sum-${Date.now()}`,
-        code: `SA-2026-${String(nextNum).padStart(3, '0')}`,
+      updateSummativeRecord(editingSummative.id, {
         date: summativeDate,
         term: summativeTerm,
         teacherId: summativeTeacherId,
-        teacherName: teacherObj ? teacherObj.fullName : 'Assigned Teacher',
+        teacherName: teacherObj ? teacherObj.fullName : editingSummative.teacherName,
+        supervisorId: resolvedSup?.id || editingSummative.supervisorId,
+        supervisorName: resolvedSup?.fullName || editingSummative.supervisorName,
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : editingSummative.mentorId || resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : editingSummative.mentorName || resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : editingSummative.evaluatorRole,
         subject: summativeSubject,
         gradeLevel: summativeGradeLevel,
         section: summativeSection,
@@ -805,8 +466,46 @@ export const FarPmcfView: React.FC = () => {
         tosAlignment: computedTosAlignmentText,
         itemQualityRemarks: summativeItemQualityRemarks,
         googleDriveLink: summativeGoogleDriveLink.trim(),
-      };
-      saveSummativeRecords([newRecord, ...summativeRecords]);
+      });
+    } else {
+      addSummativeRecord({
+        date: summativeDate,
+        term: summativeTerm,
+        teacherId: summativeTeacherId,
+        teacherName: teacherObj ? teacherObj.fullName : 'Assigned Teacher',
+        supervisorId: resolvedSup?.id || (!isMentor ? currentUser?.supervisorId || currentUser?.id : ''),
+        supervisorName: resolvedSup?.fullName || (!isMentor ? currentUser?.fullName : ''),
+        mentorId: isMentor ? activeMentor?.id || currentUser?.mentorId || currentUser?.id : resolvedMentor?.id,
+        mentorName: isMentor ? activeMentor?.fullName || currentUser?.fullName : resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : isAdmin ? 'admin' : 'supervisor',
+        subject: summativeSubject,
+        gradeLevel: summativeGradeLevel,
+        section: summativeSection,
+        summativeType,
+        tosVerified: derivedTosVerified,
+        competencyCoverage: summativeCompetency,
+        totalLearners: Number(summativeTotalLearners),
+        passedCount: Number(summativePassedCount),
+        meanScore: Number(summativeMeanScore),
+        highestPossibleScore: Number(summativeHps),
+        mps: computedMps,
+        leastMasteredNotes: summativeLeastMastered,
+        status,
+        examinationPeriod: summativeExamPeriod,
+        totalItems: Number(summativeTotalItems),
+        qualitySignOff: summativeQualitySignOff,
+        tosAttached: summativeTosAttached,
+        bloomRemember: Number(summativeBloomRemember),
+        bloomUnderstand: Number(summativeBloomUnderstand),
+        bloomApply: Number(summativeBloomApply),
+        bloomAnalyze: Number(summativeBloomAnalyze),
+        bloomEvaluate: Number(summativeBloomEvaluate),
+        bloomCreate: Number(summativeBloomCreate),
+        answerKeyVerified: summativeAnswerKeyVerified,
+        tosAlignment: computedTosAlignmentText,
+        itemQualityRemarks: summativeItemQualityRemarks,
+        googleDriveLink: summativeGoogleDriveLink.trim(),
+      });
     }
 
     // Ensure the target Term table is visible after submission
@@ -818,7 +517,7 @@ export const FarPmcfView: React.FC = () => {
   };
 
   const handleDeleteSummative = (id: string) => {
-    saveSummativeRecords(summativeRecords.filter((r) => r.id !== id));
+    deleteSummativeRecord(id);
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -836,7 +535,7 @@ export const FarPmcfView: React.FC = () => {
   const [subject, setSubject] = useState('Science 9');
   const [gradeLevel, setGradeLevel] = useState('Grade 9');
   const [section, setSection] = useState('Ruby');
-  const [teacherName, setTeacherName] = useState(teachers[0]?.fullName || '');
+  const [teacherName, setTeacherName] = useState(scopedTeachers[0]?.fullName || teachers[0]?.fullName || '');
   const [mpsQuarterTerm, setMpsQuarterTerm] = useState('Term 1');
   const [totalTakers, setTotalTakers] = useState(45);
   const [meanScore, setMeanScore] = useState(38.5);
@@ -850,7 +549,7 @@ export const FarPmcfView: React.FC = () => {
   const [pmcfStatus, setPmcfStatus] = useState<PMCFRecord['status']>('In Progress');
 
   // PMCF Form State
-  const [teacherId, setTeacherId] = useState(teachers[0]?.id || '');
+  const [teacherId, setTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
   const [quarterTerm, setQuarterTerm] = useState('Term 1');
   const [criticalIncidentDescription, setCriticalIncidentDescription] = useState('');
   const [coachingMechanism, setCoachingMechanism] = useState<PMCFRecord['coachingMechanism']>('Individual Conference');
@@ -860,7 +559,7 @@ export const FarPmcfView: React.FC = () => {
   // Findings, Analysis & Recommendations (FAR) Form State & Edit State
   const [editingFar, setEditingFar] = useState<FarRecord | null>(null);
   const [farStatus, setFarStatus] = useState<'In Progress' | 'Verified'>('In Progress');
-  const [farTeacherId, setFarTeacherId] = useState(teachers[0]?.id || '');
+  const [farTeacherId, setFarTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
   const [farTerm, setFarTerm] = useState<'Term 1' | 'Term 2' | 'Term 3' | string>('Term 1');
   const [farLessonPlanWeek, setFarLessonPlanWeek] = useState('Week 1');
   const [farFindings, setFarFindings] = useState('');
@@ -874,7 +573,8 @@ export const FarPmcfView: React.FC = () => {
         currentUser,
         teachers,
         supervisors,
-        selectedSupervisorFilterId
+        selectedSupervisorFilterId,
+        mentors
       )
     ) {
       return false;
@@ -895,7 +595,8 @@ export const FarPmcfView: React.FC = () => {
       currentUser,
       teachers,
       supervisors,
-      selectedSupervisorFilterId
+      selectedSupervisorFilterId,
+      mentors
     )
   );
 
@@ -905,7 +606,8 @@ export const FarPmcfView: React.FC = () => {
       currentUser,
       teachers,
       supervisors,
-      selectedSupervisorFilterId
+      selectedSupervisorFilterId,
+      mentors
     )
   );
 
@@ -917,7 +619,8 @@ export const FarPmcfView: React.FC = () => {
         currentUser,
         teachers,
         supervisors,
-        selectedSupervisorFilterId
+        selectedSupervisorFilterId,
+        mentors
       )
     ) {
       return false;
@@ -940,7 +643,8 @@ export const FarPmcfView: React.FC = () => {
         currentUser,
         teachers,
         supervisors,
-        selectedSupervisorFilterId
+        selectedSupervisorFilterId,
+        mentors
       )
     ) {
       return false;
@@ -1012,6 +716,14 @@ export const FarPmcfView: React.FC = () => {
         supervisors
       );
 
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor(
+        { teacherId: matchedTeacher?.id, teacherName },
+        teachers,
+        mentors
+      );
+
     if (editingAssessment) {
       updateAssessment(editingAssessment.id, {
         subject,
@@ -1021,6 +733,13 @@ export const FarPmcfView: React.FC = () => {
         teacherName,
         supervisorId: resolvedSup?.id || editingAssessment.supervisorId,
         supervisorName: resolvedSup?.fullName || editingAssessment.supervisorName,
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : editingAssessment.mentorId || resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : editingAssessment.mentorName || resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : editingAssessment.evaluatorRole,
         quarterTerm: mpsQuarterTerm,
         totalTakers,
         meanScore,
@@ -1038,8 +757,15 @@ export const FarPmcfView: React.FC = () => {
         section,
         teacherId: matchedTeacher?.id,
         teacherName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || (!isMentor ? currentUser?.supervisorId || currentUser?.id : ''),
+        supervisorName: resolvedSup?.fullName || (!isMentor ? currentUser?.fullName : ''),
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : isAdmin ? 'admin' : 'supervisor',
         quarterTerm: mpsQuarterTerm,
         assessmentType: 'Quarterly Examination',
         totalTakers,
@@ -1106,12 +832,14 @@ export const FarPmcfView: React.FC = () => {
 
   const handleSavePMCF = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacher = teachers.find((t) => t.id === teacherId) || teachers[0];
+    const teacher = teachers.find((t) => t.id === teacherId) || scopedTeachers[0] || teachers[0];
+    if (!teacher) return;
     const resolvedSup =
       resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
-      (teacher
-        ? resolveRecordSupervisor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, supervisors)
-        : undefined);
+      resolveRecordSupervisor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, supervisors);
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, mentors);
     if (editingPmcf) {
       updatePMCFRecord(editingPmcf.id, {
         category: 'assessment',
@@ -1119,6 +847,13 @@ export const FarPmcfView: React.FC = () => {
         teacherName: teacher.fullName,
         supervisorId: resolvedSup?.id || editingPmcf.supervisorId,
         supervisorName: resolvedSup?.fullName || editingPmcf.supervisorName,
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : editingPmcf.mentorId || resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : editingPmcf.mentorName || resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : editingPmcf.evaluatorRole,
         quarterTerm,
         criticalIncidentDescription,
         coachingMechanism,
@@ -1131,8 +866,15 @@ export const FarPmcfView: React.FC = () => {
         category: 'assessment',
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || (!isMentor ? currentUser?.supervisorId || currentUser?.id || '' : ''),
+        supervisorName: resolvedSup?.fullName || (!isMentor ? currentUser?.fullName || '' : ''),
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : isAdmin ? 'admin' : 'supervisor',
         date: new Date().toISOString().slice(0, 10),
         quarterTerm,
         criticalIncidentDescription,
@@ -1151,12 +893,14 @@ export const FarPmcfView: React.FC = () => {
 
   const handleSaveFAR = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacher = teachers.find((t) => t.id === farTeacherId) || teachers[0];
+    const teacher = teachers.find((t) => t.id === farTeacherId) || scopedTeachers[0] || teachers[0];
+    if (!teacher) return;
     const resolvedSup =
       resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
-      (teacher
-        ? resolveRecordSupervisor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, supervisors)
-        : undefined);
+      resolveRecordSupervisor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, supervisors);
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, mentors);
     if (editingFar) {
       updateFarRecord(editingFar.id, {
         category: 'assessment',
@@ -1164,6 +908,13 @@ export const FarPmcfView: React.FC = () => {
         teacherName: teacher.fullName,
         supervisorId: resolvedSup?.id || editingFar.supervisorId,
         supervisorName: resolvedSup?.fullName || editingFar.supervisorName,
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : editingFar.mentorId || resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : editingFar.mentorName || resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : editingFar.evaluatorRole,
         term: farTerm,
         lessonPlanWeek: farLessonPlanWeek.trim() || 'Week 1',
         findings: farFindings.trim(),
@@ -1177,8 +928,15 @@ export const FarPmcfView: React.FC = () => {
         category: 'assessment',
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || (!isMentor ? currentUser?.supervisorId || currentUser?.id || '' : ''),
+        supervisorName: resolvedSup?.fullName || (!isMentor ? currentUser?.fullName || '' : ''),
+        mentorId: isMentor
+          ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+          : resolvedMentor?.id,
+        mentorName: isMentor
+          ? activeMentor?.fullName || currentUser?.fullName
+          : resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : isAdmin ? 'admin' : 'supervisor',
         term: farTerm,
         lessonPlanWeek: farLessonPlanWeek.trim() || 'Week 1',
         findings: farFindings.trim(),
@@ -1191,6 +949,115 @@ export const FarPmcfView: React.FC = () => {
     setFarFindings('');
     setFarAnalysis('');
     setFarRecommendations('');
+  };
+
+  const handlePrintAssessmentsTable = () => {
+    printTableReportToPdf({
+      title: 'Assessment Records & Mean Percentage Scores (MPS) Table',
+      subtitle: 'Quarterly Examination MPS Tracking · 75% DepEd Benchmark (DO 8, s. 2015)',
+      schoolName: schoolProfile.schoolName,
+      schoolId: schoolProfile.schoolId,
+      address: schoolProfile.address,
+      preparedBy: currentUser?.fullName || 'Instructional Supervisor',
+      headers: [
+        'Subject & Term',
+        'Teacher & Evaluator',
+        'Section / Takers',
+        'Mean Score',
+        'MPS (%)',
+        'Least Mastered Competency',
+        'Target Status',
+      ],
+      rows: filteredAssessments.map((a) => [
+        `${a.subject}\n${a.quarterTerm}`,
+        `${a.teacherName}\n${
+          a.evaluatorRole === 'mentor' && a.mentorName
+            ? `Mentor: ${a.mentorName}`
+            : `Supervisor: ${resolveRecordSupervisorName(a, teachers, supervisors)}`
+        }`,
+        `${a.section}\n${a.totalTakers} examinees`,
+        `${a.meanScore} / ${a.highestPossibleScore}`,
+        `${a.mps}%`,
+        a.leastMasteredCompetencies.join('; ') || '—',
+        a.targetMet ? 'Target Met (>=75%)' : 'Below Target (<75%)',
+      ]),
+    });
+  };
+
+  const handlePrintFormativeTable = (termFilter?: FormativeTerm) => {
+    const rowsToPrint = scopedFormativeRecords.filter(
+      (r) => !termFilter || r.term === termFilter
+    );
+    printTableReportToPdf({
+      title: termFilter
+        ? `Formative Assessment Table — ${termFilter}`
+        : 'Formative Assessment Menu & Consolidated Term Tables',
+      subtitle: 'Daily & Weekly Formative Mastery Tracking',
+      schoolName: schoolProfile.schoolName,
+      schoolId: schoolProfile.schoolId,
+      address: schoolProfile.address,
+      preparedBy: currentUser?.fullName || 'Instructional Supervisor',
+      headers: [
+        'Code & Date',
+        'Term',
+        'Teacher & Evaluator',
+        'Subject & Class',
+        'Strategy & Competency',
+        'Mastery / MPS',
+        'Instructional Feedback',
+      ],
+      rows: rowsToPrint.map((item) => [
+        `${item.code}\n${item.date}`,
+        item.term,
+        `${item.teacherName}\n${
+          item.evaluatorRole === 'mentor' && item.mentorName
+            ? `Mentor: ${item.mentorName}`
+            : `Supervisor: ${resolveRecordSupervisorName(item, teachers, supervisors)}`
+        }`,
+        `${item.subject}\n${item.gradeLevel} · ${item.section}`,
+        `${item.formativeType}: ${item.competencyTopic}`,
+        `${item.mps.toFixed(1)}% (${item.status})`,
+        item.feedbackNotes || '—',
+      ]),
+    });
+  };
+
+  const handlePrintSummativeTable = (termFilter?: SummativeTerm) => {
+    const rowsToPrint = scopedSummativeRecords.filter(
+      (r) => !termFilter || r.term === termFilter
+    );
+    printTableReportToPdf({
+      title: termFilter
+        ? `Summative Assessment Table — ${termFilter}`
+        : 'Summative Assessment Menu & Consolidated Term Tables',
+      subtitle: 'TOS Verification, Cognitive Domains & Quarterly Summative MPS',
+      schoolName: schoolProfile.schoolName,
+      schoolId: schoolProfile.schoolId,
+      address: schoolProfile.address,
+      preparedBy: currentUser?.fullName || 'Instructional Supervisor',
+      headers: [
+        'Code & Date',
+        'Term',
+        'Teacher & Evaluator',
+        'Subject & Class',
+        'Summative Type & TOS QA',
+        'Mastery / MPS',
+        'Least Mastered & QA Remarks',
+      ],
+      rows: rowsToPrint.map((item) => [
+        `${item.code}\n${item.date}`,
+        item.term,
+        `${item.teacherName}\n${
+          item.evaluatorRole === 'mentor' && item.mentorName
+            ? `Mentor: ${item.mentorName}`
+            : `Supervisor: ${resolveRecordSupervisorName(item, teachers, supervisors)}`
+        }`,
+        `${item.subject}\n${item.gradeLevel} · ${item.section}`,
+        `${item.summativeType} · ${item.tosVerified}\n${item.competencyCoverage}`,
+        `${item.mps.toFixed(1)}% (${item.status})`,
+        `${item.leastMasteredNotes || '—'}${item.itemQualityRemarks ? `\nQA: ${item.itemQualityRemarks}` : ''}`,
+      ]),
+    });
   };
 
   return (
@@ -1259,7 +1126,7 @@ export const FarPmcfView: React.FC = () => {
         </div>
       </div>
 
-      {/* Visual Progress Bar Panel: Completed Observations & Lesson Plan Checks vs. Total Teachers */}
+      {/* Visual Progress Bar Panel: Scoped to Authorized Teachers */}
       <div className="bg-white p-5 rounded-xl border border-stone-200 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-stone-100">
           <div className="flex items-center gap-2.5">
@@ -1268,16 +1135,22 @@ export const FarPmcfView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-bold text-stone-900">
-                Instructional & Assessment Supervision Completion Progress
+                {isTeacher
+                  ? 'My Personal Supervision & Assessment Progress'
+                  : isMentor
+                  ? 'Mentee Assessment & Lesson Plan Supervision Progress'
+                  : 'Instructional & Assessment Supervision Completion Progress'}
               </h3>
               <p className="text-xs text-stone-500">
-                Percentage of completed classroom observations and lesson plan (DLL/DLP) checks against total rostered teachers ({teachers.length} Teachers)
+                {isMentor
+                  ? `Lesson plan (DLL/DLP) & assessment tracking across ${displayTeacherPool.length} assigned mentee(s)`
+                  : `Percentage of completed evaluations against ${displayTeacherPool.length} authorized faculty record(s)`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2 self-start sm:self-auto">
             <span className="px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-xs font-bold text-stone-700 font-mono">
-              Total Teachers: {teachers.length}
+              {isTeacher ? 'Scope: Personal' : `Teachers: ${displayTeacherPool.length}`}
             </span>
             <span className="px-2.5 py-1 rounded-lg bg-[#701628] text-white text-xs font-bold font-mono">
               Overall: {overallSupervisionPct}%
@@ -1288,7 +1161,11 @@ export const FarPmcfView: React.FC = () => {
         {/* Combined Overall Visual Progress Bar */}
         <div className="bg-stone-50/80 p-3.5 rounded-xl border border-stone-200/80">
           <div className="flex items-center justify-between text-xs font-bold text-stone-800 mb-1.5">
-            <span>Overall Supervision Completion Rate (Observations + DLL Checks vs. {teachers.length} Teachers)</span>
+            <span>
+              {isMentor
+                ? `Mentee Lesson Plan Completion Rate (${displayTeacherPool.length} Mentees)`
+                : `Supervision Completion Rate (${displayTeacherPool.length} Authorized Teachers)`}
+            </span>
             <span className="font-mono text-[#701628] text-sm">{overallSupervisionPct}%</span>
           </div>
           <div className="w-full h-3 bg-stone-200 rounded-full overflow-hidden flex">
@@ -1299,45 +1176,46 @@ export const FarPmcfView: React.FC = () => {
           </div>
         </div>
 
-        {/* 2 Detailed Progress Bars: Completed Observations & Lesson Plan Checks */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Progress Bar 1: Completed Observations vs Total Teachers */}
-          <div className="p-4 rounded-xl border border-stone-200 bg-white space-y-2.5">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-rose-50 text-[#701628] border border-rose-200">
-                  <ClipboardCheck className="w-4 h-4" />
-                </span>
-                <div>
-                  <div className="text-xs font-bold text-stone-900">
-                    Completed Classroom Observations
-                  </div>
-                  <div className="text-[11px] text-stone-500">
-                    {completedObservationsCount} completed of {teachers.length} total teachers ({uniqueTeachersObservedCount} unique faculty observed)
+        {/* Detailed Progress Bars */}
+        <div className={`grid grid-cols-1 ${isMentor ? '' : 'md:grid-cols-2'} gap-4`}>
+          {!isMentor && (
+            <div className="p-4 rounded-xl border border-stone-200 bg-white space-y-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-lg bg-rose-50 text-[#701628] border border-rose-200">
+                    <ClipboardCheck className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <div className="text-xs font-bold text-stone-900">
+                      Completed Classroom Observations
+                    </div>
+                    <div className="text-[11px] text-stone-500">
+                      {completedObservationsCount} completed ({uniqueTeachersObservedCount} unique faculty)
+                    </div>
                   </div>
                 </div>
+                <span className="text-base font-extrabold font-mono text-[#701628] tabular-nums">
+                  {observationCompletionPct}%
+                </span>
               </div>
-              <span className="text-base font-extrabold font-mono text-[#701628] tabular-nums">
-                {observationCompletionPct}%
-              </span>
-            </div>
 
-            <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden border border-stone-200/60">
-              <div
-                className="h-full bg-[#701628] rounded-full transition-all duration-500"
-                style={{ width: `${observationCompletionPct}%` }}
-              />
-            </div>
+              <div className="w-full h-2.5 bg-stone-100 rounded-full overflow-hidden border border-stone-200/60">
+                <div
+                  className="h-full bg-[#701628] rounded-full transition-all duration-500"
+                  style={{ width: `${observationCompletionPct}%` }}
+                />
+              </div>
 
-            <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
-              <span>Faculty Coverage: <strong className="text-stone-800">{teacherObservedCoveragePct}%</strong> ({uniqueTeachersObservedCount}/{teachers.length})</span>
-              <span className="font-mono font-semibold text-emerald-700">
-                {observations.filter((o) => o.status === 'Scheduled').length} Scheduled Next
-              </span>
+              <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
+                <span>Faculty Coverage: <strong className="text-stone-800">{teacherObservedCoveragePct}%</strong> ({uniqueTeachersObservedCount}/{displayTeacherPool.length})</span>
+                <span className="font-mono font-semibold text-emerald-700">
+                  {scopedObservations.filter((o) => o.status === 'Scheduled').length} Scheduled Next
+                </span>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Progress Bar 2: Completed Lesson Plan Checks vs Total Teachers */}
+          {/* Progress Bar 2: Completed Lesson Plan Checks */}
           <div className="p-4 rounded-xl border border-stone-200 bg-white space-y-2.5">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -1349,7 +1227,7 @@ export const FarPmcfView: React.FC = () => {
                     Completed Lesson Plan (DLL/DLP) Checks
                   </div>
                   <div className="text-[11px] text-stone-500">
-                    {completedLessonPlanChecksCount} checked ({approvedLessonPlansCount} Approved) vs. {teachers.length} total teachers
+                    {completedLessonPlanChecksCount} checked ({approvedLessonPlansCount} Approved) of {displayTeacherPool.length} authorized
                   </div>
                 </div>
               </div>
@@ -1366,22 +1244,23 @@ export const FarPmcfView: React.FC = () => {
             </div>
 
             <div className="flex items-center justify-between text-[11px] text-stone-500 pt-1">
-              <span>Teachers Checked: <strong className="text-stone-800">{uniqueTeachersLessonPlanCheckedCount}/{teachers.length}</strong></span>
+              <span>Teachers Checked: <strong className="text-stone-800">{uniqueTeachersLessonPlanCheckedCount}/{displayTeacherPool.length}</strong></span>
               <span className="font-mono font-semibold text-amber-800">
-                {lessonPlans.filter((lp) => lp.status === 'Pending Inspection').length} Pending Inspection
+                {scopedLessonPlans.filter((lp) => lp.status === 'Pending Inspection').length} Pending Inspection
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Instructional Supervisor Output Scope Banner / Filter */}
+      {/* Instructional Supervisor / Mentor Output Scope Banner / Filter */}
       <SupervisionScopeBanner
         selectedSupervisorFilterId={selectedSupervisorFilterId}
         onChangeSupervisorFilterId={setSelectedSupervisorFilterId}
         currentUser={currentUser}
         teachers={teachers}
         supervisors={supervisors}
+        mentors={mentors}
         moduleLabel="Assessment MPS, Formative & Summative Term Tables, PMCF & FAR for Assessment Tables"
       />
 
@@ -1418,6 +1297,15 @@ export const FarPmcfView: React.FC = () => {
               {filteredAssessments.length}{' '}
               {filteredAssessments.length === 1 ? 'Record' : 'Records'}
             </span>
+            <button
+              type="button"
+              onClick={handlePrintAssessmentsTable}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-stone-800 hover:bg-stone-900 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+              title="Print / Export Assessment Records & MPS Table to PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-300" />
+              <span>Print to PDF</span>
+            </button>
             <button
               type="button"
               onClick={openNewAssessmentModal}
@@ -1463,6 +1351,11 @@ export const FarPmcfView: React.FC = () => {
                       <div className="text-[10px] text-[#701628] font-medium">
                         Supervisor: {resolveRecordSupervisorName(a, teachers, supervisors)}
                       </div>
+                      {(a.mentorName || a.evaluatorRole === 'mentor') && (
+                        <div className="text-[10px] text-teal-700 font-semibold">
+                          Mentor: {a.mentorName || resolveRecordMentor(a, teachers, mentors)?.fullName || 'Assigned Mentor'}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4 text-stone-600">
                       <div>{a.section}</div>
@@ -1594,6 +1487,16 @@ export const FarPmcfView: React.FC = () => {
 
             <button
               type="button"
+              onClick={() => handlePrintFormativeTable()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+              title="Print / Export Formative Assessment Tables to PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-300" />
+              <span>Print to PDF</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => openNewFormativeModal()}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
             >
@@ -1668,16 +1571,26 @@ export const FarPmcfView: React.FC = () => {
                       </div>
                       <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => openNewFormativeModal(section.term)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-[#701628] border border-[#701628]/30 rounded-lg text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>
-                        Add to {section.term === 'Term 3' ? 'Term 3 (End of Term)' : section.term}
-                      </span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintFormativeTable(section.term)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Print to PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openNewFormativeModal(section.term)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-[#701628] border border-[#701628]/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>
+                          Add to {section.term === 'Term 3' ? 'Term 3 (End of Term)' : section.term}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -1713,6 +1626,11 @@ export const FarPmcfView: React.FC = () => {
                                 <div className="text-[10px] text-[#701628] font-medium">
                                   Supervisor: {resolveRecordSupervisorName(item, teachers, supervisors)}
                                 </div>
+                                {(item.mentorName || item.evaluatorRole === 'mentor') && (
+                                  <div className="text-[10px] text-teal-700 font-semibold">
+                                    Mentor: {item.mentorName || resolveRecordMentor(item, teachers, mentors)?.fullName || 'Assigned Mentor'}
+                                  </div>
+                                )}
                               </td>
                               <td className="py-3 px-4">
                                 <div className="font-semibold text-stone-800">{item.subject}</div>
@@ -1862,6 +1780,16 @@ export const FarPmcfView: React.FC = () => {
 
             <button
               type="button"
+              onClick={() => handlePrintSummativeTable()}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
+              title="Print / Export Summative Assessment Tables to PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-300" />
+              <span>Print to PDF</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => openNewSummativeModal()}
               className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
             >
@@ -1936,16 +1864,26 @@ export const FarPmcfView: React.FC = () => {
                       </div>
                       <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => openNewSummativeModal(section.term)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-teal-800 border border-teal-700/30 rounded-lg text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>
-                        Add to {section.term === 'Term 3' ? 'Term 3 (End of Term)' : section.term}
-                      </span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintSummativeTable(section.term)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Print to PDF</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openNewSummativeModal(section.term)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-teal-800 border border-teal-700/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>
+                          Add to {section.term === 'Term 3' ? 'Term 3 (End of Term)' : section.term}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
@@ -1981,6 +1919,11 @@ export const FarPmcfView: React.FC = () => {
                                 <div className="text-[10px] text-[#701628] font-medium">
                                   Supervisor: {resolveRecordSupervisorName(item, teachers, supervisors)}
                                 </div>
+                                {(item.mentorName || item.evaluatorRole === 'mentor') && (
+                                  <div className="text-[10px] text-teal-700 font-semibold">
+                                    Mentor: {item.mentorName || resolveRecordMentor(item, teachers, mentors)?.fullName || 'Assigned Mentor'}
+                                  </div>
+                                )}
                               </td>
                               <td className="py-3 px-4">
                                 <div className="font-semibold text-stone-800">{item.subject}</div>
@@ -2183,6 +2126,11 @@ export const FarPmcfView: React.FC = () => {
                       <div className="text-[10px] text-stone-500">
                         Instructional Supervisor: {resolveRecordSupervisorName(r, teachers, supervisors)}
                       </div>
+                      {(r.mentorName || r.evaluatorRole === 'mentor') && (
+                        <div className="text-[10px] text-teal-700 font-semibold">
+                          Mentor: {r.mentorName || resolveRecordMentor(r, teachers, mentors)?.fullName || 'Assigned Mentor'}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded">
@@ -2336,6 +2284,11 @@ export const FarPmcfView: React.FC = () => {
                         <div className="text-[10px] font-medium text-[#701628] mt-0.5">
                           Supervisor: {resolveRecordSupervisorName(r, teachers, supervisors)}
                         </div>
+                        {(r.mentorName || r.evaluatorRole === 'mentor') && (
+                          <div className="text-[10px] text-teal-700 font-semibold mt-0.5">
+                            Mentor: {r.mentorName || resolveRecordMentor(r, teachers, mentors)?.fullName || 'Assigned Mentor'}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1.5 mt-1">
                           <span className="text-[10px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded">
                             {r.term}
@@ -2461,9 +2414,10 @@ export const FarPmcfView: React.FC = () => {
                   <select
                     value={teacherId}
                     onChange={(e) => setTeacherId(e.target.value)}
-                    className="w-full border border-stone-300 rounded-lg p-2 bg-white"
+                    disabled={isTeacher}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
                   >
-                    {teachers.map((t) => (
+                    {scopedTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -2611,9 +2565,10 @@ export const FarPmcfView: React.FC = () => {
                 <select
                   value={farTeacherId}
                   onChange={(e) => setFarTeacherId(e.target.value)}
-                  className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium"
+                  disabled={isTeacher}
+                  className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium disabled:bg-stone-100"
                 >
-                  {teachers.map((t) => (
+                  {scopedTeachers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.fullName} ({t.department} · {t.position} - {t.subject})
                     </option>
@@ -2803,9 +2758,10 @@ export const FarPmcfView: React.FC = () => {
                   <select
                     value={teacherName}
                     onChange={(e) => setTeacherName(e.target.value)}
-                    className="w-full border border-stone-300 rounded-lg p-2 bg-white"
+                    disabled={isTeacher}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
                   >
-                    {teachers.map((t) => (
+                    {scopedTeachers.map((t) => (
                       <option key={t.id} value={t.fullName}>
                         {t.fullName}
                       </option>
@@ -2998,13 +2954,14 @@ export const FarPmcfView: React.FC = () => {
                       setFormativeTeacherId(id);
                       const found = teachers.find((t) => t.id === id);
                       if (found) {
-                        setFormativeSubject(found.department);
+                        setFormativeSubject(found.subject || found.department);
                         setFormativeGradeLevel(found.gradeLevels?.[0] || 'Grade 10');
                       }
                     }}
-                    className="w-full border border-stone-300 rounded-lg p-2 bg-white"
+                    disabled={isTeacher}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
                   >
-                    {teachers.map((t) => (
+                    {scopedTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -3289,13 +3246,14 @@ export const FarPmcfView: React.FC = () => {
                       setSummativeTeacherId(id);
                       const found = teachers.find((t) => t.id === id);
                       if (found) {
-                        setSummativeSubject(found.department);
+                        setSummativeSubject(found.subject || found.department);
                         setSummativeGradeLevel(found.gradeLevels?.[0] || 'Grade 10');
                       }
                     }}
-                    className="w-full border border-stone-300 rounded-lg p-2 bg-white"
+                    disabled={isTeacher}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
                   >
-                    {teachers.map((t) => (
+                    {scopedTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>

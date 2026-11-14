@@ -4,19 +4,21 @@ import { useAuth } from '../context/AuthContext';
 import {
   ResourceLink,
   CotIndicatorRating,
+  FormativeTerm,
+  SummativeTerm,
   FleetingObservation,
 } from '../types';
+import {
+  matchesRoleSupervisionScope,
+  getScopedTeachersForModal,
+  resolveActiveSupervisorForUser,
+  resolveActiveMentorForUser,
+} from '../utils/supervisionScope';
 import {
   CLASSROOM_OBSERVATION_SECTIONS,
   ALL_CLASSROOM_MONITORING_ITEMS,
 } from './CotObservationView';
 import { FLEETING_WALKTHROUGH_MONITORING_SECTIONS } from './FleetingObservationView';
-import {
-  FormativeTerm,
-  FormativeAssessmentRecord,
-  SummativeTerm,
-  SummativeAssessmentRecord,
-} from './FarPmcfView';
 import { MeMonitoringTablesSection } from '../components/MeMonitoringTablesSection';
 import {
   FileSpreadsheet,
@@ -35,9 +37,6 @@ import {
   ClipboardCheck,
   CheckCircle2,
 } from 'lucide-react';
-
-const FORMATIVE_STORAGE_KEY = 'bnhs_omes_formative_records_v2';
-const SUMMATIVE_STORAGE_KEY = 'bnhs_omes_summative_records_v2';
 
 const DEFAULT_FLEETING_MONITORING_RATINGS: Record<string, 'E' | 'NE'> = {
   '1.1': 'E',
@@ -65,6 +64,7 @@ export const ReportsLinksView: React.FC = () => {
   const {
     teachers,
     supervisors,
+    mentors,
     resourceLinks,
     addResourceLink,
     updateResourceLink,
@@ -81,9 +81,39 @@ export const ReportsLinksView: React.FC = () => {
     farRecords,
     assessments,
     addAssessment,
+    addFormativeRecord,
+    addSummativeRecord,
     auditLogs,
   } = useData();
-  const { currentUser, isAdmin, isTeacher } = useAuth();
+  const { currentUser, isAdmin, isSupervisor, isMentor, isTeacher } = useAuth();
+
+  const activeSupervisor = resolveActiveSupervisorForUser(currentUser, teachers, supervisors);
+  const activeMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
+  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors, mentors);
+  const modalTeacherPool = scopedTeachers.length > 0 ? scopedTeachers : teachers;
+
+  const scopedObservations = isMentor
+    ? []
+    : observations.filter((o) =>
+        matchesRoleSupervisionScope(o, currentUser, teachers, supervisors, 'All', mentors)
+      );
+  const scopedFleetingObservations = isMentor
+    ? []
+    : fleetingObservations.filter((f) =>
+        matchesRoleSupervisionScope(f, currentUser, teachers, supervisors, 'All', mentors)
+      );
+  const scopedLessonPlans = lessonPlans.filter((lp) =>
+    matchesRoleSupervisionScope(lp, currentUser, teachers, supervisors, 'All', mentors)
+  );
+  const scopedAssessments = assessments.filter((a) =>
+    matchesRoleSupervisionScope(a, currentUser, teachers, supervisors, 'All', mentors)
+  );
+  const scopedPmcfRecords = pmcfRecords.filter((r) =>
+    matchesRoleSupervisionScope(r, currentUser, teachers, supervisors, 'All', mentors)
+  );
+  const scopedFarRecords = farRecords.filter((r) =>
+    matchesRoleSupervisionScope(r, currentUser, teachers, supervisors, 'All', mentors)
+  );
 
   const [activeTab, setActiveTab] = useState<'term-reports' | 'resources'>('term-reports');
   const [isAddLinkModalOpen, setIsAddLinkModalOpen] = useState(false);
@@ -105,11 +135,15 @@ export const ReportsLinksView: React.FC = () => {
   // 1. M & E TOOL ON THE CONDUCT OF CLASSROOM OBSERVATIONS (Same as Conduct New Classroom Observation)
   // ============================================================================
   const [isClassroomObsModalOpen, setIsClassroomObsModalOpen] = useState(false);
-  const [selectedObsTeacherId, setSelectedObsTeacherId] = useState(teachers[0]?.id || '');
-  const [selectedObsSupervisorId, setSelectedObsSupervisorId] = useState(supervisors[0]?.id || '');
+  const [selectedObsTeacherId, setSelectedObsTeacherId] = useState(modalTeacherPool[0]?.id || '');
+  const [selectedObsSupervisorId, setSelectedObsSupervisorId] = useState(
+    activeSupervisor?.id || supervisors[0]?.id || ''
+  );
   const [obsQuarterTerm, setObsQuarterTerm] = useState<'Term 1' | 'Term 2' | 'Term 3'>('Term 1');
   const [obsGradeAndSection, setObsGradeAndSection] = useState('Grade 9 - Ruby');
-  const [obsSubjectTaught, setObsSubjectTaught] = useState(teachers[0]?.subject || 'Science 9 (Biology)');
+  const [obsSubjectTaught, setObsSubjectTaught] = useState(
+    modalTeacherPool[0]?.subject || 'Science 9 (Biology)'
+  );
   const [obsTopicTitle, setObsTopicTitle] = useState('');
   const [obsDate, setObsDate] = useState(new Date().toISOString().slice(0, 10));
   const [obsTimeStart, setObsTimeStart] = useState('08:30 AM');
@@ -164,8 +198,10 @@ export const ReportsLinksView: React.FC = () => {
     }));
 
     const selectedSupervisor = supervisors.find((s) => s.id === selectedObsSupervisorId);
-    const observerId = selectedSupervisor ? selectedSupervisor.id : currentUser.id;
-    const observerName = selectedSupervisor ? selectedSupervisor.fullName : currentUser.fullName;
+    const observerId = selectedSupervisor ? selectedSupervisor.id : currentUser?.id || '';
+    const observerName = selectedSupervisor
+      ? selectedSupervisor.fullName
+      : currentUser?.fullName || 'Assigned Instructional Supervisor';
 
     addObservation({
       evaluationType: 'classroom',
@@ -230,9 +266,9 @@ export const ReportsLinksView: React.FC = () => {
   const [quickCoachingTip, setQuickCoachingTip] = useState('');
 
   const handleOpenFleetingModal = () => {
-    setFleetingTeacherId(teachers[0]?.id || '');
+    setFleetingTeacherId(modalTeacherPool[0]?.id || '');
     setFleetingGradeAndSection('Grade 9 - Ruby');
-    setFleetingSubject('Science 9');
+    setFleetingSubject(modalTeacherPool[0]?.subject || 'Science 9');
     setDurationMinutes(10);
     setLearnerEngagementLevel('High (80-100%)');
     setClassroomAtmosphere('Conducive & Orderly');
@@ -250,14 +286,19 @@ export const ReportsLinksView: React.FC = () => {
 
   const handleSaveFleeting = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacher = teachers.find((t) => t.id === fleetingTeacherId) || teachers[0];
+    const teacher = teachers.find((t) => t.id === fleetingTeacherId) || modalTeacherPool[0];
     if (!teacher) return;
+
+    const assignedSup =
+      activeSupervisor ||
+      supervisors.find((s) => s.id === teacher.assignedSupervisorId) ||
+      supervisors[0];
 
     addFleetingObservation({
       teacherId: teacher.id,
       teacherName: teacher.fullName,
-      supervisorId: currentUser.id,
-      supervisorName: currentUser.fullName,
+      supervisorId: assignedSup?.id || currentUser?.id || '',
+      supervisorName: assignedSup?.fullName || currentUser?.fullName || 'Assigned Instructional Supervisor',
       date: new Date().toISOString().slice(0, 10),
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       durationMinutes,
@@ -299,8 +340,9 @@ export const ReportsLinksView: React.FC = () => {
 
   const handleOpenSubmitLessonPlanModal = () => {
     const initialTeacher = isTeacher
-      ? teachers.find((t) => t.fullName === currentUser.fullName) || teachers[0]
-      : teachers[0];
+      ? teachers.find((t) => t.id === currentUser?.teacherId || t.fullName === currentUser?.fullName) ||
+        modalTeacherPool[0]
+      : modalTeacherPool[0];
 
     if (initialTeacher) {
       setDllTeacherId(initialTeacher.id);
@@ -313,10 +355,10 @@ export const ReportsLinksView: React.FC = () => {
       ? supervisors.find((s) => s.id === initialTeacher.assignedSupervisorId) || supervisors[0]
       : supervisors[0];
 
-    setDllSupervisorId(sup?.id || '');
+    setDllSupervisorId(activeSupervisor?.id || sup?.id || '');
     setDllWeekNumber(9);
     setDllQuarterTerm('Term 1');
-    setDllDriveUrl(sup?.driveUrl || '');
+    setDllDriveUrl(activeMentor?.driveUrl || activeSupervisor?.driveUrl || sup?.driveUrl || '');
     setDllLessonTitle('');
     setIsSubmitLessonPlanModalOpen(true);
   };
@@ -324,14 +366,18 @@ export const ReportsLinksView: React.FC = () => {
   const handleSubmitNewPlan = (e: React.FormEvent) => {
     e.preventDefault();
     const teacher = isTeacher
-      ? teachers.find((t) => t.fullName === currentUser.fullName) || teachers[0]
-      : teachers.find((t) => t.id === dllTeacherId) || teachers[0];
+      ? teachers.find((t) => t.id === currentUser?.teacherId || t.fullName === currentUser?.fullName) ||
+        modalTeacherPool[0]
+      : teachers.find((t) => t.id === dllTeacherId) || modalTeacherPool[0];
     if (!teacher) return;
 
     const targetSupervisor =
       supervisors.find((s) => s.id === dllSupervisorId) ||
       supervisors.find((s) => s.id === teacher.assignedSupervisorId) ||
       supervisors[0];
+    const targetMentor =
+      activeMentor ||
+      mentors.find((m) => m.id === teacher.assignedMentorId);
 
     addLessonPlan({
       teacherId: teacher.id,
@@ -341,6 +387,9 @@ export const ReportsLinksView: React.FC = () => {
       supervisorName: targetSupervisor
         ? targetSupervisor.fullName
         : 'Assigned Instructional Supervisor',
+      mentorId: isMentor ? activeMentor?.id || currentUser?.mentorId || currentUser?.id : targetMentor?.id,
+      mentorName: isMentor ? activeMentor?.fullName || currentUser?.fullName : targetMentor?.fullName,
+      evaluatorRole: isMentor ? 'mentor' : isAdmin ? 'admin' : 'supervisor',
       dateSubmitted: new Date().toISOString().slice(0, 10),
       dateChecked: 'Pending',
       weekNumber: dllWeekNumber,
@@ -450,18 +499,23 @@ export const ReportsLinksView: React.FC = () => {
   const handleOpenCheckingAssessmentModal = () => {
     const defaultTeacher =
       (isTeacher && currentUser
-        ? teachers.find((t) => t.id === currentUser.id || t.fullName === currentUser.fullName)
-        : undefined) || teachers[0];
+        ? teachers.find(
+            (t) =>
+              t.id === currentUser.teacherId ||
+              t.id === currentUser.id ||
+              t.fullName === currentUser.fullName
+          )
+        : undefined) || modalTeacherPool[0];
     const today = new Date().toISOString().slice(0, 10);
 
     setFormativeDate(today);
-    setFormativeTeacherId(defaultTeacher?.id || '1');
-    setFormativeSubject(defaultTeacher?.department || 'Mathematics');
+    setFormativeTeacherId(defaultTeacher?.id || '');
+    setFormativeSubject(defaultTeacher?.subject || defaultTeacher?.department || 'Mathematics');
     setFormativeGradeLevel(defaultTeacher?.gradeLevels?.[0] || 'Grade 10');
 
     setSummativeDate(today);
-    setSummativeTeacherId(defaultTeacher?.id || '1');
-    setSummativeSubject(defaultTeacher?.department || 'Mathematics');
+    setSummativeTeacherId(defaultTeacher?.id || '');
+    setSummativeSubject(defaultTeacher?.subject || defaultTeacher?.department || 'Mathematics');
     setSummativeGradeLevel(defaultTeacher?.gradeLevels?.[0] || 'Grade 10');
 
     setMpsTeacherName(defaultTeacher?.fullName || '');
@@ -470,41 +524,47 @@ export const ReportsLinksView: React.FC = () => {
 
   const handleSaveFormative = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacherObj = teachers.find((t) => t.id === formativeTeacherId);
+    const teacherObj = teachers.find((t) => t.id === formativeTeacherId) || modalTeacherPool[0];
+    if (!teacherObj) return;
     const computedMps =
       formativeHps > 0 ? Number(((formativeMeanScore / formativeHps) * 100).toFixed(1)) : 0;
     const status: 'Mastery Achieved' | 'Needs Remediation' =
       computedMps >= 75 ? 'Mastery Achieved' : 'Needs Remediation';
+    const assignedSup =
+      activeSupervisor ||
+      supervisors.find((s) => s.id === teacherObj.assignedSupervisorId);
+    const assignedMentor =
+      activeMentor ||
+      mentors.find((m) => m.id === teacherObj.assignedMentorId);
 
-    try {
-      const saved = localStorage.getItem(FORMATIVE_STORAGE_KEY);
-      const existing: FormativeAssessmentRecord[] = saved ? JSON.parse(saved) : [];
-      const nextNum = existing.length + 1;
-      const newRecord: FormativeAssessmentRecord = {
-        id: `form-${Date.now()}`,
-        code: `FA-2026-${String(nextNum).padStart(3, '0')}`,
-        date: formativeDate,
-        term: formativeTerm,
-        teacherId: formativeTeacherId,
-        teacherName: teacherObj ? teacherObj.fullName : 'Assigned Teacher',
-        subject: formativeSubject,
-        gradeLevel: formativeGradeLevel,
-        section: formativeSection,
-        formativeType,
-        competencyTopic: formativeCompetency,
-        totalLearners: Number(formativeTotalLearners),
-        masteryCount: Number(formativeMasteryCount),
-        meanScore: Number(formativeMeanScore),
-        highestPossibleScore: Number(formativeHps),
-        mps: computedMps,
-        feedbackNotes: formativeFeedback,
-        status,
-        googleDriveLink: formativeGoogleDriveLink.trim(),
-      };
-      localStorage.setItem(FORMATIVE_STORAGE_KEY, JSON.stringify([newRecord, ...existing]));
-    } catch {
-      // ignore storage errors
-    }
+    addFormativeRecord({
+      date: formativeDate,
+      term: formativeTerm,
+      teacherId: teacherObj.id,
+      teacherName: teacherObj.fullName,
+      supervisorId: assignedSup?.id || teacherObj.assignedSupervisorId,
+      supervisorName: assignedSup?.fullName || '',
+      mentorId: isMentor
+        ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+        : assignedMentor?.id,
+      mentorName: isMentor
+        ? activeMentor?.fullName || currentUser?.fullName
+        : assignedMentor?.fullName,
+      evaluatorRole: isMentor ? 'mentor' : isSupervisor ? 'supervisor' : 'admin',
+      subject: formativeSubject,
+      gradeLevel: formativeGradeLevel,
+      section: formativeSection,
+      formativeType,
+      competencyTopic: formativeCompetency,
+      totalLearners: Number(formativeTotalLearners),
+      masteryCount: Number(formativeMasteryCount),
+      meanScore: Number(formativeMeanScore),
+      highestPossibleScore: Number(formativeHps),
+      mps: computedMps,
+      feedbackNotes: formativeFeedback,
+      status,
+      googleDriveLink: formativeGoogleDriveLink.trim(),
+    });
 
     setIsCheckingAssessmentModalOpen(false);
     setFormativeCompetency('');
@@ -515,7 +575,8 @@ export const ReportsLinksView: React.FC = () => {
 
   const handleSaveSummative = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacherObj = teachers.find((t) => t.id === summativeTeacherId);
+    const teacherObj = teachers.find((t) => t.id === summativeTeacherId) || modalTeacherPool[0];
+    if (!teacherObj) return;
     const computedMps =
       summativeHps > 0 ? Number(((summativeMeanScore / summativeHps) * 100).toFixed(1)) : 0;
     const status: 'Mastery Achieved' | 'Needs Remediation' =
@@ -524,50 +585,55 @@ export const ReportsLinksView: React.FC = () => {
       summativeTosAttached && summativeAnswerKeyVerified
         ? 'TOS & Answer Key Verified'
         : summativeTosVerified;
+    const assignedSup =
+      activeSupervisor ||
+      supervisors.find((s) => s.id === teacherObj.assignedSupervisorId);
+    const assignedMentor =
+      activeMentor ||
+      mentors.find((m) => m.id === teacherObj.assignedMentorId);
 
-    try {
-      const saved = localStorage.getItem(SUMMATIVE_STORAGE_KEY);
-      const existing: SummativeAssessmentRecord[] = saved ? JSON.parse(saved) : [];
-      const nextNum = existing.length + 1;
-      const newRecord: SummativeAssessmentRecord = {
-        id: `sum-${Date.now()}`,
-        code: `SA-2026-${String(nextNum).padStart(3, '0')}`,
-        date: summativeDate,
-        term: summativeTerm,
-        teacherId: summativeTeacherId,
-        teacherName: teacherObj ? teacherObj.fullName : 'Assigned Teacher',
-        subject: summativeSubject,
-        gradeLevel: summativeGradeLevel,
-        section: summativeSection,
-        summativeType,
-        tosVerified: derivedTosVerified,
-        competencyCoverage: summativeCompetency,
-        totalLearners: Number(summativeTotalLearners),
-        passedCount: Number(summativePassedCount),
-        meanScore: Number(summativeMeanScore),
-        highestPossibleScore: Number(summativeHps),
-        mps: computedMps,
-        leastMasteredNotes: summativeLeastMastered,
-        status,
-        examinationPeriod: summativeExamPeriod,
-        totalItems: Number(summativeTotalItems),
-        qualitySignOff: summativeQualitySignOff,
-        tosAttached: summativeTosAttached,
-        bloomRemember: Number(summativeBloomRemember),
-        bloomUnderstand: Number(summativeBloomUnderstand),
-        bloomApply: Number(summativeBloomApply),
-        bloomAnalyze: Number(summativeBloomAnalyze),
-        bloomEvaluate: Number(summativeBloomEvaluate),
-        bloomCreate: Number(summativeBloomCreate),
-        answerKeyVerified: summativeAnswerKeyVerified,
-        tosAlignment: computedTosAlignmentText,
-        itemQualityRemarks: summativeItemQualityRemarks,
-        googleDriveLink: summativeGoogleDriveLink.trim(),
-      };
-      localStorage.setItem(SUMMATIVE_STORAGE_KEY, JSON.stringify([newRecord, ...existing]));
-    } catch {
-      // ignore storage errors
-    }
+    addSummativeRecord({
+      date: summativeDate,
+      term: summativeTerm,
+      teacherId: teacherObj.id,
+      teacherName: teacherObj.fullName,
+      supervisorId: assignedSup?.id || teacherObj.assignedSupervisorId,
+      supervisorName: assignedSup?.fullName || '',
+      mentorId: isMentor
+        ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+        : assignedMentor?.id,
+      mentorName: isMentor
+        ? activeMentor?.fullName || currentUser?.fullName
+        : assignedMentor?.fullName,
+      evaluatorRole: isMentor ? 'mentor' : isSupervisor ? 'supervisor' : 'admin',
+      subject: summativeSubject,
+      gradeLevel: summativeGradeLevel,
+      section: summativeSection,
+      summativeType,
+      tosVerified: derivedTosVerified,
+      competencyCoverage: summativeCompetency,
+      totalLearners: Number(summativeTotalLearners),
+      passedCount: Number(summativePassedCount),
+      meanScore: Number(summativeMeanScore),
+      highestPossibleScore: Number(summativeHps),
+      mps: computedMps,
+      leastMasteredNotes: summativeLeastMastered,
+      status,
+      examinationPeriod: summativeExamPeriod,
+      totalItems: Number(summativeTotalItems),
+      qualitySignOff: summativeQualitySignOff,
+      tosAttached: summativeTosAttached,
+      bloomRemember: Number(summativeBloomRemember),
+      bloomUnderstand: Number(summativeBloomUnderstand),
+      bloomApply: Number(summativeBloomApply),
+      bloomAnalyze: Number(summativeBloomAnalyze),
+      bloomEvaluate: Number(summativeBloomEvaluate),
+      bloomCreate: Number(summativeBloomCreate),
+      answerKeyVerified: summativeAnswerKeyVerified,
+      tosAlignment: computedTosAlignmentText,
+      itemQualityRemarks: summativeItemQualityRemarks,
+      googleDriveLink: summativeGoogleDriveLink.trim(),
+    });
 
     setIsCheckingAssessmentModalOpen(false);
     setSummativeCompetency('');
@@ -584,12 +650,29 @@ export const ReportsLinksView: React.FC = () => {
       .split(';')
       .map((s) => s.trim())
       .filter(Boolean);
+    const teacherObj = teachers.find((t) => t.fullName === mpsTeacherName) || modalTeacherPool[0];
+    const assignedSup =
+      activeSupervisor ||
+      (teacherObj ? supervisors.find((s) => s.id === teacherObj.assignedSupervisorId) : undefined);
+    const assignedMentor =
+      activeMentor ||
+      (teacherObj ? mentors.find((m) => m.id === teacherObj.assignedMentorId) : undefined);
 
     addAssessment({
       subject: mpsSubject,
       gradeLevel: mpsGradeLevel,
       section: mpsSection,
+      teacherId: teacherObj?.id,
       teacherName: mpsTeacherName,
+      supervisorId: assignedSup?.id || teacherObj?.assignedSupervisorId,
+      supervisorName: assignedSup?.fullName || '',
+      mentorId: isMentor
+        ? activeMentor?.id || currentUser?.mentorId || currentUser?.id
+        : assignedMentor?.id,
+      mentorName: isMentor
+        ? activeMentor?.fullName || currentUser?.fullName
+        : assignedMentor?.fullName,
+      evaluatorRole: isMentor ? 'mentor' : isSupervisor ? 'supervisor' : 'admin',
       quarterTerm: mpsQuarterTerm as any,
       assessmentType: 'Quarterly Examination',
       totalTakers,
@@ -690,7 +773,7 @@ export const ReportsLinksView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {activeTab === 'resources' && (
+            {activeTab === 'resources' && !isTeacher && (
               <button
                 onClick={handleOpenAddModal}
                 className="flex items-center gap-1.5 px-4 py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
@@ -699,14 +782,16 @@ export const ReportsLinksView: React.FC = () => {
                 <span>Add Resource Link</span>
               </button>
             )}
-            <button
-              onClick={exportDatabaseJson}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-lg transition-colors border border-stone-300 cursor-pointer"
-              title="Download full JSON database snapshot"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Database Backup (JSON)</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={exportDatabaseJson}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-lg transition-colors border border-stone-300 cursor-pointer"
+                title="Download full JSON database snapshot"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Database Backup (JSON)</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -721,7 +806,7 @@ export const ReportsLinksView: React.FC = () => {
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          DepEd Term Reports & CSV Export Center
+          {isTeacher ? 'My Personal Reports & CSV Exports' : 'DepEd Term Reports & CSV Export Center'}
         </button>
         <button
           onClick={() => setActiveTab('resources')}
@@ -737,46 +822,52 @@ export const ReportsLinksView: React.FC = () => {
 
       {activeTab === 'term-reports' && (
         <div className="space-y-6">
-          {/* CSV Export Quick Cards */}
+          {/* Role-Scoped CSV Export Quick Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between text-[#701628] mb-2">
-                  <FileSpreadsheet className="w-5 h-5" />
-                  <span className="text-[10px] font-mono bg-amber-50 text-amber-900 px-1.5 py-0.5 rounded font-bold">
-                    {observations.length} Records
-                  </span>
+            {!isMentor && (
+              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[#701628] mb-2">
+                    <FileSpreadsheet className="w-5 h-5" />
+                    <span className="text-[10px] font-mono bg-amber-50 text-amber-900 px-1.5 py-0.5 rounded font-bold">
+                      {scopedObservations.length} Records
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-stone-900 text-xs">
+                    {isTeacher ? 'My COT-PMES Observation Log' : 'COT-PMES Observation Log'}
+                  </h4>
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Records of indicators, scores, qualitative remarks, and observation notes within your authorized scope.
+                  </p>
                 </div>
-                <h4 className="font-bold text-stone-900 text-xs">COT-PMES Observation Log</h4>
-                <p className="text-[11px] text-stone-500 mt-1">
-                  Full records of 9 indicators, scores, qualitative remarks, and teacher signatures.
-                </p>
+                <button
+                  onClick={() => exportAllCsv('cot', { observations: scopedObservations })}
+                  className="mt-4 w-full py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export COT (.CSV)</span>
+                </button>
               </div>
-              <button
-                onClick={() => exportAllCsv('cot')}
-                className="mt-4 w-full py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export COT (.CSV)</span>
-              </button>
-            </div>
+            )}
 
             <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between text-amber-700 mb-2">
                   <FileSpreadsheet className="w-5 h-5" />
                   <span className="text-[10px] font-mono bg-amber-50 text-amber-900 px-1.5 py-0.5 rounded font-bold">
-                    {lessonPlans.length} Logs
+                    {scopedLessonPlans.length} Logs
                   </span>
                 </div>
-                <h4 className="font-bold text-stone-900 text-xs">DLL / DLP Inspection Log</h4>
+                <h4 className="font-bold text-stone-900 text-xs">
+                  {isTeacher ? 'My DLL / DLP Inspection Log' : 'DLL / DLP Inspection Log'}
+                </h4>
                 <p className="text-[11px] text-stone-500 mt-1">
-                  Weekly submissions, DepEd 6-point checklist results, and approval timestamps.
+                  Weekly submissions, DepEd checklist results, and approval timestamps.
                 </p>
               </div>
               <button
-                onClick={() => exportAllCsv('dll')}
-                className="mt-4 w-full py-2 bg-amber-500 hover:bg-amber-600 text-stone-900 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                onClick={() => exportAllCsv('dll', { lessonPlans: scopedLessonPlans })}
+                className="mt-4 w-full py-2 bg-amber-500 hover:bg-amber-600 text-stone-900 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export DLL (.CSV)</span>
@@ -788,131 +879,149 @@ export const ReportsLinksView: React.FC = () => {
                 <div className="flex items-center justify-between text-emerald-700 mb-2">
                   <FileSpreadsheet className="w-5 h-5" />
                   <span className="text-[10px] font-mono bg-emerald-50 text-emerald-900 px-1.5 py-0.5 rounded font-bold">
-                    {assessments.length} Tests
+                    {scopedAssessments.length} Tests
                   </span>
                 </div>
-                <h4 className="font-bold text-stone-900 text-xs">Quarterly MPS Analysis</h4>
+                <h4 className="font-bold text-stone-900 text-xs">
+                  {isTeacher ? 'My Quarterly MPS Analysis' : 'Quarterly MPS Analysis'}
+                </h4>
                 <p className="text-[11px] text-stone-500 mt-1">
                   Mean Percentage Score by subject, examinee count, and remediation plans.
                 </p>
               </div>
               <button
-                onClick={() => exportAllCsv('mps')}
-                className="mt-4 w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                onClick={() => exportAllCsv('mps', { assessments: scopedAssessments })}
+                className="mt-4 w-full py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>Export MPS (.CSV)</span>
               </button>
             </div>
 
-            <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between text-[#701628] mb-2">
-                  <ShieldCheck className="w-5 h-5" />
-                  <span className="text-[10px] font-mono bg-rose-50 text-[#701628] px-1.5 py-0.5 rounded font-bold">
-                    {auditLogs.length} Events
-                  </span>
+            {isAdmin ? (
+              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[#701628] mb-2">
+                    <ShieldCheck className="w-5 h-5" />
+                    <span className="text-[10px] font-mono bg-rose-50 text-[#701628] px-1.5 py-0.5 rounded font-bold">
+                      {auditLogs.length} Events
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-stone-900 text-xs">System Audit Registry</h4>
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Institutional changelog of teacher rosters, supervisor pairings &amp; observations.
+                  </p>
                 </div>
-                <h4 className="font-bold text-stone-900 text-xs">System Audit Registry</h4>
-                <p className="text-[11px] text-stone-500 mt-1">
-                  Institutional changelog of teacher rosters, supervisor pairings & observations.
-                </p>
+                <button
+                  onClick={() => exportAllCsv('audit', { auditLogs })}
+                  className="mt-4 w-full py-2 bg-stone-800 hover:bg-black text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Export Audit (.CSV)</span>
+                </button>
               </div>
-              <button
-                onClick={() => exportAllCsv('audit')}
-                className="mt-4 w-full py-2 bg-stone-800 hover:bg-black text-white text-xs font-bold rounded-lg flex items-center justify-center gap-1.5 transition-colors"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export Audit (.CSV)</span>
-              </button>
-            </div>
+            ) : (
+              <div className="bg-white p-4 rounded-xl border border-stone-200 shadow-xs flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between text-[#701628] mb-2">
+                    <FileText className="w-5 h-5" />
+                    <span className="text-[10px] font-mono bg-rose-50 text-[#701628] px-1.5 py-0.5 rounded font-bold">
+                      {scopedPmcfRecords.length + scopedFarRecords.length} Reports
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-stone-900 text-xs">
+                    {isTeacher ? 'My PMCF & FAR CSV Export' : 'Scoped PMCF & FAR CSV'}
+                  </h4>
+                  <p className="text-[11px] text-stone-500 mt-1">
+                    Download private PMCF ({scopedPmcfRecords.length}) or FAR ({scopedFarRecords.length}) records for your account.
+                  </p>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => exportAllCsv('pmcf', { pmcfRecords: scopedPmcfRecords })}
+                    className="py-2 bg-blue-700 hover:bg-blue-800 text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>PMCF</span>
+                  </button>
+                  <button
+                    onClick={() => exportAllCsv('far', { farRecords: scopedFarRecords })}
+                    className="py-2 bg-stone-800 hover:bg-black text-white text-[11px] font-bold rounded-lg flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>FAR</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Term Consolidations (Term 1, Term 2, Term 3) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Term 1 */}
-            <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-2">
-                <h3 className="font-bold text-stone-900 text-sm">Term 1 / Q1-Q2 Report</h3>
-                <span className="text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded">
-                  82% Completed
-                </span>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Supervisory Period:</span>
-                  <span className="font-medium">August – October 2026</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Completed COT Observations:</span>
-                  <span className="font-mono font-bold text-[#701628]">14 / 16 Target</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Overall Rating Distribution:</span>
-                  <span className="font-bold text-stone-800">10 Outstanding, 4 VS</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-stone-500">School Consolidated MPS:</span>
-                  <span className="font-mono font-bold text-emerald-700">78.85%</span>
-                </div>
-              </div>
-            </div>
+            {(['Term 1', 'Term 2', 'Term 3'] as const).map((termLabel, idx) => {
+              const termObs = scopedObservations.filter((o) => o.quarterTerm === termLabel);
+              const termPlans = scopedLessonPlans.filter((lp) => lp.quarterTerm === termLabel);
+              const termAssess = scopedAssessments.filter((a) => a.quarterTerm === termLabel);
+              const termAvgMps =
+                termAssess.length > 0
+                  ? (termAssess.reduce((acc, a) => acc + a.mps, 0) / termAssess.length).toFixed(2)
+                  : null;
+              const periodText =
+                idx === 0
+                  ? 'August – October 2026'
+                  : idx === 1
+                    ? 'November 2026 – January 2027'
+                    : 'February – May 2027';
 
-            {/* Term 2 */}
-            <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-2">
-                <h3 className="font-bold text-stone-900 text-sm">Term 2 / Q3 Report</h3>
-                <span className="text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded">
-                  In Progress (15%)
-                </span>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Supervisory Period:</span>
-                  <span className="font-medium">November 2026 – January 2027</span>
+              return (
+                <div key={termLabel} className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs">
+                  <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-2">
+                    <h3 className="font-bold text-stone-900 text-sm">
+                      {termLabel === 'Term 1'
+                        ? 'Term 1 / Q1-Q2 Report'
+                        : termLabel === 'Term 2'
+                          ? 'Term 2 / Q3 Report'
+                          : 'Term 3 / Q4 & Year-End'}
+                    </h3>
+                    <span
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded border ${
+                        termObs.length + termPlans.length + termAssess.length > 0
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : 'bg-stone-100 text-stone-600 border-stone-200'
+                      }`}
+                    >
+                      {isAdmin ? 'School Summary' : 'My Scope Summary'}
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="flex justify-between py-1 border-b border-stone-50">
+                      <span className="text-stone-500">Supervisory Period:</span>
+                      <span className="font-medium">{periodText}</span>
+                    </div>
+                    {!isMentor && (
+                      <div className="flex justify-between py-1 border-b border-stone-50">
+                        <span className="text-stone-500">Classroom / COT Observations:</span>
+                        <span className="font-mono font-bold text-[#701628]">
+                          {termObs.length} Logged
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between py-1 border-b border-stone-50">
+                      <span className="text-stone-500">Lesson Plan Checks:</span>
+                      <span className="font-bold text-stone-800">{termPlans.length} Checked</span>
+                    </div>
+                    <div className="flex justify-between py-1">
+                      <span className="text-stone-500">
+                        {isAdmin ? 'School Consolidated MPS:' : 'Scoped Average MPS:'}
+                      </span>
+                      <span className="font-mono font-bold text-emerald-700">
+                        {termAvgMps ? `${termAvgMps}%` : 'Pending Scores'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Scheduled COT Observations:</span>
-                  <span className="font-mono font-bold text-stone-700">16 Teachers</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Pre-Conferences Completed:</span>
-                  <span className="font-mono font-bold text-amber-700">4 / 16 Done</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-stone-500">Mid-Year Review Target:</span>
-                  <span className="font-medium text-stone-700">January 2027</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Term 3 */}
-            <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs">
-              <div className="flex items-center justify-between mb-3 border-b border-stone-100 pb-2">
-                <h3 className="font-bold text-stone-900 text-sm">Term 3 / Q4 & Year-End</h3>
-                <span className="text-[11px] font-bold bg-stone-100 text-stone-600 px-2 py-0.5 rounded">
-                  Scheduled
-                </span>
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Supervisory Period:</span>
-                  <span className="font-medium">February – May 2027</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Year-End RPMS (IPCRF) Review:</span>
-                  <span className="font-medium text-stone-700">May 2027</span>
-                </div>
-                <div className="flex justify-between py-1 border-b border-stone-50">
-                  <span className="text-stone-500">Consolidated MPS Target:</span>
-                  <span className="font-mono font-bold text-emerald-700">&ge; 80.0%</span>
-                </div>
-                <div className="flex justify-between py-1">
-                  <span className="text-stone-500">Portfolio Verification:</span>
-                  <span className="font-medium text-stone-500">Upcoming</span>
-                </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -927,16 +1036,20 @@ export const ReportsLinksView: React.FC = () => {
                   Monitoring Tools on Google Sheets, Google Drive &amp; Official Web Links
                 </h3>
                 <p className="text-[11px] text-stone-500">
-                  Manage official DepEd monitoring tools, templates, and Google Drive repository links
+                  {isTeacher
+                    ? 'Access official DepEd monitoring tools, templates, and Google Drive repository links'
+                    : 'Manage official DepEd monitoring tools, templates, and Google Drive repository links'}
                 </p>
               </div>
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors self-start sm:self-auto"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Add Resource Link</span>
-              </button>
+              {!isTeacher && (
+                <button
+                  onClick={handleOpenAddModal}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors self-start sm:self-auto"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Add Resource Link</span>
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -948,13 +1061,13 @@ export const ReportsLinksView: React.FC = () => {
                     <th className="py-3 px-4 font-bold">Description</th>
                     <th className="py-3 px-4 font-bold">Date Added</th>
                     <th className="py-3 px-4 font-bold">Resource Link</th>
-                    <th className="py-3 px-4 font-bold text-right">Actions</th>
+                    {!isTeacher && <th className="py-3 px-4 font-bold text-right">Actions</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-200">
                   {resourceLinks.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-stone-400">
+                      <td colSpan={isTeacher ? 5 : 6} className="py-8 text-center text-stone-400">
                         No Google Drive or official web links added yet.
                       </td>
                     </tr>
@@ -988,27 +1101,29 @@ export const ReportsLinksView: React.FC = () => {
                               <ExternalLink className="w-3 h-3" />
                             </a>
                           </td>
-                          <td className="py-3 px-4 text-right whitespace-nowrap">
-                            <div className="inline-flex items-center justify-end gap-1.5">
-                              <button
-                                onClick={() => handleOpenEditModal(link)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-md font-bold text-[11px] transition-colors"
-                                title="Edit resource link"
-                              >
-                                <Pencil className="w-3 h-3" />
-                                <span>Edit</span>
-                              </button>
-                              {isAdmin && (
+                          {!isTeacher && (
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center justify-end gap-1.5">
                                 <button
-                                  onClick={() => deleteResourceLink(link.id)}
-                                  className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md font-bold text-[11px] transition-colors"
-                                  title="Delete resource link"
+                                  onClick={() => handleOpenEditModal(link)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 rounded-md font-bold text-[11px] transition-colors"
+                                  title="Edit resource link"
                                 >
-                                  <Trash2 className="w-3 h-3" />
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Edit</span>
                                 </button>
-                              )}
-                            </div>
-                          </td>
+                                {isAdmin && (
+                                  <button
+                                    onClick={() => deleteResourceLink(link.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-md font-bold text-[11px] transition-colors"
+                                    title="Delete resource link"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
                         </tr>
                       );
                     })
@@ -1060,25 +1175,27 @@ export const ReportsLinksView: React.FC = () => {
                     <ExternalLink className="w-3 h-3" />
                   </a>
 
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleOpenEditModal(link)}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-stone-600 hover:text-[#701628] hover:bg-stone-100 rounded font-semibold transition-colors"
-                      title="Edit link"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      <span>Edit</span>
-                    </button>
-                    {isAdmin && (
+                  {!isTeacher && (
+                    <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => deleteResourceLink(link.id)}
-                        className="text-stone-400 hover:text-rose-600 p-1"
-                        title="Delete link"
+                        onClick={() => handleOpenEditModal(link)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-stone-600 hover:text-[#701628] hover:bg-stone-100 rounded font-semibold transition-colors"
+                        title="Edit link"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit</span>
                       </button>
-                    )}
-                  </div>
+                      {isAdmin && (
+                        <button
+                          onClick={() => deleteResourceLink(link.id)}
+                          className="text-stone-400 hover:text-rose-600 p-1"
+                          title="Delete link"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -1086,13 +1203,13 @@ export const ReportsLinksView: React.FC = () => {
         </div>
       )}
 
-      {/* 4 M & E Monitoring Tool Tables (Visible to Instructional Supervisor & Administrator, hidden in Teacher account) */}
+      {/* 4 M & E Monitoring Tool Tables (Hidden in Teacher account) */}
       {!isTeacher && (
         <MeMonitoringTablesSection
-          observations={observations}
-          fleetingObservations={fleetingObservations}
-          lessonPlans={lessonPlans}
-          assessments={assessments}
+          observations={scopedObservations}
+          fleetingObservations={scopedFleetingObservations}
+          lessonPlans={scopedLessonPlans}
+          assessments={scopedAssessments}
           onOpenClassroomModal={() => setIsClassroomObsModalOpen(true)}
           onOpenFleetingModal={handleOpenFleetingModal}
           onOpenLessonPlanModal={handleOpenSubmitLessonPlanModal}
@@ -1267,7 +1384,7 @@ export const ReportsLinksView: React.FC = () => {
                     }}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white text-stone-900 font-semibold"
                   >
-                    {teachers.map((t) => (
+                    {modalTeacherPool.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department} · {t.subject || t.position})
                       </option>
@@ -1561,7 +1678,7 @@ export const ReportsLinksView: React.FC = () => {
                     onChange={(e) => setFleetingTeacherId(e.target.value)}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                   >
-                    {teachers.map((t) => (
+                    {modalTeacherPool.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -1828,7 +1945,7 @@ export const ReportsLinksView: React.FC = () => {
                     }}
                     className="w-full border border-stone-300 rounded-xl p-2.5 bg-white text-stone-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#701628]"
                   >
-                    {teachers.map((t) => (
+                    {modalTeacherPool.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName}
                       </option>
@@ -1837,53 +1954,55 @@ export const ReportsLinksView: React.FC = () => {
                 </div>
               )}
 
-              {/* Assigned Instructional Supervisor Option Box */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block font-bold text-stone-700">
-                    Assigned Instructional Supervisor
-                  </label>
-                  {assignedDllSupervisor?.driveUrl && (
-                    <a
-                      href={assignedDllSupervisor.driveUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-[#701628] hover:underline"
-                      title="Open Assigned Instructional Supervisor's Google Drive folder"
-                    >
-                      <ExternalLink className="w-3 h-3 text-amber-700" />
-                      <span>Supervisor Drive ↗</span>
-                    </a>
+              {/* Assigned Instructional Supervisor Option Box (Hidden for Mentor accounts) */}
+              {!isMentor && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-stone-700">
+                      Assigned Instructional Supervisor
+                    </label>
+                    {assignedDllSupervisor?.driveUrl && (
+                      <a
+                        href={assignedDllSupervisor.driveUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-[#701628] hover:underline"
+                        title="Open Assigned Instructional Supervisor's Google Drive folder"
+                      >
+                        <ExternalLink className="w-3 h-3 text-amber-700" />
+                        <span>Supervisor Drive ↗</span>
+                      </a>
+                    )}
+                  </div>
+                  <select
+                    value={dllSupervisorId}
+                    onChange={(e) => {
+                      const newSupId = e.target.value;
+                      setDllSupervisorId(newSupId);
+                      const sup = supervisors.find((s) => s.id === newSupId);
+                      if (sup?.driveUrl) {
+                        setDllDriveUrl(sup.driveUrl);
+                      }
+                    }}
+                    className="w-full border border-stone-300 rounded-xl p-2.5 bg-white text-stone-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#701628]"
+                  >
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.fullName} — {s.position} ({s.department})
+                      </option>
+                    ))}
+                  </select>
+                  {assignedDllSupervisor && (
+                    <p className="text-[10px] text-stone-500 mt-1">
+                      Selected Supervisor:{' '}
+                      <span className="font-semibold text-[#701628]">
+                        {assignedDllSupervisor.fullName}
+                      </span>{' '}
+                      · {assignedDllSupervisor.position} ({assignedDllSupervisor.department})
+                    </p>
                   )}
                 </div>
-                <select
-                  value={dllSupervisorId}
-                  onChange={(e) => {
-                    const newSupId = e.target.value;
-                    setDllSupervisorId(newSupId);
-                    const sup = supervisors.find((s) => s.id === newSupId);
-                    if (sup?.driveUrl) {
-                      setDllDriveUrl(sup.driveUrl);
-                    }
-                  }}
-                  className="w-full border border-stone-300 rounded-xl p-2.5 bg-white text-stone-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#701628]"
-                >
-                  {supervisors.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.fullName} — {s.position} ({s.department})
-                    </option>
-                  ))}
-                </select>
-                {assignedDllSupervisor && (
-                  <p className="text-[10px] text-stone-500 mt-1">
-                    Selected Supervisor:{' '}
-                    <span className="font-semibold text-[#701628]">
-                      {assignedDllSupervisor.fullName}
-                    </span>{' '}
-                    · {assignedDllSupervisor.position} ({assignedDllSupervisor.department})
-                  </p>
-                )}
-              </div>
+              )}
 
               {/* Subject & Grade Level */}
               <div>
@@ -2156,7 +2275,7 @@ export const ReportsLinksView: React.FC = () => {
                       }}
                       className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                     >
-                      {teachers.map((t) => (
+                      {modalTeacherPool.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.fullName} ({t.department})
                         </option>
@@ -2609,7 +2728,7 @@ export const ReportsLinksView: React.FC = () => {
                       }}
                       className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                     >
-                      {teachers.map((t) => (
+                      {modalTeacherPool.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.fullName} ({t.department})
                         </option>
@@ -2850,7 +2969,7 @@ export const ReportsLinksView: React.FC = () => {
                       onChange={(e) => setMpsTeacherName(e.target.value)}
                       className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                     >
-                      {teachers.map((t) => (
+                      {modalTeacherPool.map((t) => (
                         <option key={t.id} value={t.fullName}>
                           {t.fullName}
                         </option>

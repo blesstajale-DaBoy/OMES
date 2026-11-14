@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { Supervisor } from '../types';
+import { Supervisor, Mentor } from '../types';
 import {
   X,
   Shield,
@@ -26,6 +26,7 @@ import {
 interface ForgotPasswordModalProps {
   isOpen: boolean;
   onClose: () => void;
+  defaultRole?: 'supervisor' | 'mentor';
   defaultSupervisorId?: string;
   onSuccessLogin?: () => void;
 }
@@ -35,18 +36,23 @@ type ResetStep = 'identify' | 'verify' | 'new_password' | 'success';
 export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   isOpen,
   onClose,
+  defaultRole = 'supervisor',
   defaultSupervisorId,
   onSuccessLogin,
 }) => {
-  const { supervisors, updateSupervisorPassword } = useData();
-  const { loginAsSupervisor } = useAuth();
+  const { supervisors, mentors, updateSupervisorPassword, updateMentorPassword } = useData();
+  const { loginAsSupervisor, loginAsMentor } = useAuth();
 
-  // Current step
+  // Current step & account type
   const [step, setStep] = useState<ResetStep>('identify');
+  const [accountType, setAccountType] = useState<'supervisor' | 'mentor'>(defaultRole);
 
-  // Supervisor selection
+  // Account selection
   const [selectedSupervisorId, setSelectedSupervisorId] = useState<string>(() => {
     return defaultSupervisorId || supervisors[0]?.id || '';
+  });
+  const [selectedMentorId, setSelectedMentorId] = useState<string>(() => {
+    return (defaultRole === 'mentor' ? defaultSupervisorId : undefined) || mentors[0]?.id || '';
   });
 
   // OTP state
@@ -70,17 +76,29 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   // Refs for OTP input auto-advance
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Find active target supervisor
+  // Find active target account
   const targetSupervisor: Supervisor | undefined =
     supervisors.find((s) => s.id === selectedSupervisorId) || supervisors[0];
+  const targetMentor: Mentor | undefined =
+    mentors.find((m) => m.id === selectedMentorId) || mentors[0];
+  const targetAccount = accountType === 'mentor' ? targetMentor : targetSupervisor;
 
-  // Sync default supervisor on open
+  // Sync default account on open
   useEffect(() => {
     if (isOpen) {
-      if (defaultSupervisorId && supervisors.some((s) => s.id === defaultSupervisorId)) {
-        setSelectedSupervisorId(defaultSupervisorId);
-      } else if (!selectedSupervisorId && supervisors.length > 0) {
-        setSelectedSupervisorId(supervisors[0].id);
+      setAccountType(defaultRole);
+      if (defaultRole === 'mentor') {
+        if (defaultSupervisorId && mentors.some((m) => m.id === defaultSupervisorId)) {
+          setSelectedMentorId(defaultSupervisorId);
+        } else if (mentors.length > 0) {
+          setSelectedMentorId(mentors[0].id);
+        }
+      } else {
+        if (defaultSupervisorId && supervisors.some((s) => s.id === defaultSupervisorId)) {
+          setSelectedSupervisorId(defaultSupervisorId);
+        } else if (!selectedSupervisorId && supervisors.length > 0) {
+          setSelectedSupervisorId(supervisors[0].id);
+        }
       }
       setStep('identify');
       setOtpInputs(['', '', '', '', '', '']);
@@ -90,7 +108,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       setNewPassword('');
       setConfirmPassword('');
     }
-  }, [isOpen, defaultSupervisorId, supervisors]);
+  }, [isOpen, defaultRole, defaultSupervisorId, supervisors, mentors]);
 
   // Timer for OTP expiration and resend cooldown
   useEffect(() => {
@@ -141,14 +159,18 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
   // Handle Step 1 -> Send OTP
   const handleInitiateReset = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!targetSupervisor) {
-      setErrorMessage('Please select a valid Instructional Supervisor.');
+    if (!targetAccount) {
+      setErrorMessage(
+        accountType === 'mentor'
+          ? 'Please select a valid Mentor.'
+          : 'Please select a valid Instructional Supervisor.'
+      );
       return;
     }
-    const code = generateNewOtp();
+    generateNewOtp();
     setStep('verify');
     setStatusNotification(
-      `Secure 6-digit verification code dispatched to ${targetSupervisor.email}. Valid for 10 minutes.`
+      `Secure 6-digit verification code dispatched to ${targetAccount.email}. Valid for 10 minutes.`
     );
   };
 
@@ -243,7 +265,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
     setErrorMessage('');
 
     if (newPassword.length < 6) {
-      setErrorMessage('Password must be at least 6 characters for supervisor account security.');
+      setErrorMessage('Password must be at least 6 characters for account security.');
       return;
     }
 
@@ -252,13 +274,17 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       return;
     }
 
-    if (!targetSupervisor) {
-      setErrorMessage('Supervisor account not found.');
+    if (!targetAccount) {
+      setErrorMessage('Account not found.');
       return;
     }
 
     // Update password in persistence
-    updateSupervisorPassword(targetSupervisor.id, newPassword);
+    if (accountType === 'mentor') {
+      updateMentorPassword(targetAccount.id, newPassword);
+    } else {
+      updateSupervisorPassword(targetAccount.id, newPassword);
+    }
 
     // Proceed to success step
     setStep('success');
@@ -266,11 +292,14 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
   // Handle Step 4 -> Instant login
   const handleInstantLogin = () => {
-    if (!targetSupervisor) {
+    if (!targetAccount) {
       onClose();
       return;
     }
-    const res = loginAsSupervisor(targetSupervisor, newPassword);
+    const res =
+      accountType === 'mentor'
+        ? loginAsMentor(targetAccount as Mentor, newPassword)
+        : loginAsSupervisor(targetAccount as Supervisor, newPassword);
     if (res.success) {
       onSuccessLogin?.();
       onClose();
@@ -314,13 +343,15 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm sm:text-base font-bold tracking-tight">Supervisor Password Recovery</h3>
+                <h3 className="text-sm sm:text-base font-bold tracking-tight">
+                  {accountType === 'mentor' ? 'Mentor Password Recovery' : 'Supervisor Password Recovery'}
+                </h3>
                 <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-stone-900">
                   Private & Secure
                 </span>
               </div>
               <p className="text-[11px] text-amber-200/80 line-clamp-1">
-                Barobo National High School · Instructional Supervisory Security Gateway
+                Barobo National High School · {accountType === 'mentor' ? 'Mentor Security Gateway' : 'Instructional Supervisory Security Gateway'}
               </p>
             </div>
           </div>
@@ -445,39 +476,91 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
           {/* STEP 1: IDENTIFY SUPERVISOR */}
           {step === 'identify' && (
             <form onSubmit={handleInitiateReset} className="space-y-4">
+              <div className="grid grid-cols-2 gap-1.5 bg-stone-100 p-1 rounded-xl border border-stone-200 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountType('supervisor');
+                    setErrorMessage('');
+                  }}
+                  className={`py-2 rounded-lg transition-colors cursor-pointer ${
+                    accountType === 'supervisor'
+                      ? 'bg-white text-[#701628] shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Instructional Supervisor
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAccountType('mentor');
+                    setErrorMessage('');
+                  }}
+                  className={`py-2 rounded-lg transition-colors cursor-pointer ${
+                    accountType === 'mentor'
+                      ? 'bg-white text-[#701628] shadow-xs'
+                      : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Instructional Mentor
+                </button>
+              </div>
+
               <div className="p-4 bg-amber-50/70 rounded-xl border border-amber-200 text-amber-900 text-xs">
                 <div className="flex items-center gap-2 font-bold mb-1 text-[#701628]">
                   <ShieldCheck className="w-4 h-4 text-amber-700" />
-                  <span>Instructional Supervisor Account Privacy Protection</span>
+                  <span>
+                    {accountType === 'mentor'
+                      ? 'Mentor Account Privacy Protection'
+                      : 'Instructional Supervisor Account Privacy Protection'}
+                  </span>
                 </div>
                 <p className="text-[11px] text-amber-950/80 leading-relaxed">
-                  Every instructional supervisor at BNHS has an independent, private account. Resetting
-                  your password only alters your individual access. Other supervisors, teachers, or staff cannot
-                  view or access your credentials.
+                  Every {accountType === 'mentor' ? 'mentor' : 'instructional supervisor'} at BNHS has an independent, private account. Resetting your password only alters your individual access.
                 </p>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-stone-700 mb-1.5">
-                  Select Registered Instructional Supervisor
+                  {accountType === 'mentor'
+                    ? 'Select Registered Mentor'
+                    : 'Select Registered Instructional Supervisor'}
                 </label>
-                <select
-                  value={selectedSupervisorId}
-                  onChange={(e) => {
-                    setSelectedSupervisorId(e.target.value);
-                    setErrorMessage('');
-                  }}
-                  className="w-full p-3 text-xs font-semibold border border-stone-300 rounded-xl bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#701628]"
-                >
-                  {supervisors.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.fullName} — {s.position} ({s.department})
-                    </option>
-                  ))}
-                </select>
+                {accountType === 'mentor' ? (
+                  <select
+                    value={selectedMentorId}
+                    onChange={(e) => {
+                      setSelectedMentorId(e.target.value);
+                      setErrorMessage('');
+                    }}
+                    className="w-full p-3 text-xs font-semibold border border-stone-300 rounded-xl bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#701628]"
+                  >
+                    {mentors.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.fullName} — {m.position} ({m.subjectArea || m.department})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    value={selectedSupervisorId}
+                    onChange={(e) => {
+                      setSelectedSupervisorId(e.target.value);
+                      setErrorMessage('');
+                    }}
+                    className="w-full p-3 text-xs font-semibold border border-stone-300 rounded-xl bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-[#701628]"
+                  >
+                    {supervisors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.fullName} — {s.position} ({s.department})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
-              {targetSupervisor && (
+              {targetAccount && (
                 <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
                   <div className="text-[11px] font-bold uppercase tracking-wider text-stone-500">
                     Account Verification Details
@@ -485,14 +568,14 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                   <div className="flex items-center justify-between">
                     <div>
                       <div className="text-sm font-bold text-[#701628]">
-                        {targetSupervisor.fullName}
+                        {targetAccount.fullName}
                       </div>
                       <div className="text-xs text-stone-600">
-                        {targetSupervisor.position} · {targetSupervisor.department}
+                        {targetAccount.position} · {targetAccount.department}
                       </div>
                     </div>
                     <span className="px-2.5 py-1 bg-stone-200/80 rounded-md text-[11px] font-mono font-semibold text-stone-700">
-                      ID: {targetSupervisor.employeeId}
+                      ID: {targetAccount.employeeId}
                     </span>
                   </div>
 
@@ -502,7 +585,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                       <span>Registered DepEd Email:</span>
                     </div>
                     <span className="font-mono font-bold text-stone-800">
-                      {maskEmail(targetSupervisor.email)}
+                      {maskEmail(targetAccount.email)}
                     </span>
                   </div>
                 </div>
@@ -531,7 +614,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 <p className="text-xs text-stone-500">
                   Dispatched to{' '}
                   <span className="font-mono font-bold text-stone-800">
-                    {targetSupervisor?.email || 'registered email'}
+                    {targetAccount?.email || 'registered email'}
                   </span>
                 </p>
               </div>
@@ -602,11 +685,11 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
                 <div className="text-xs space-y-1">
                   <div className="text-stone-300">
-                    <span className="text-stone-400 font-semibold">To:</span> {targetSupervisor?.fullName}{' '}
-                    &lt;{targetSupervisor?.email}&gt;
+                    <span className="text-stone-400 font-semibold">To:</span> {targetAccount?.fullName}{' '}
+                    &lt;{targetAccount?.email}&gt;
                   </div>
                   <div className="text-amber-200 font-semibold text-[11px]">
-                    Subject: BNHS-OMES Supervisor Password Reset OTP
+                    Subject: BNHS-OMES Account Password Reset OTP
                   </div>
                 </div>
 
@@ -750,8 +833,8 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
               </div>
 
               <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-stone-600 text-[11px]">
-                <div className="font-bold text-stone-800 mb-0.5">Instructional Supervisor Privacy Reminder</div>
-                Only <span className="font-semibold text-[#701628]">{targetSupervisor?.fullName}</span> will
+                <div className="font-bold text-stone-800 mb-0.5">Account Privacy Reminder</div>
+                Only <span className="font-semibold text-[#701628]">{targetAccount?.fullName}</span> will
                 be able to log in with this new password. No other account credentials or teacher profiles will be
                 affected.
               </div>
@@ -788,7 +871,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 </h4>
                 <p className="text-xs text-stone-600 mt-1 max-w-md mx-auto leading-relaxed">
                   The private password for{' '}
-                  <span className="font-bold text-[#701628]">{targetSupervisor?.fullName}</span> has been
+                  <span className="font-bold text-[#701628]">{targetAccount?.fullName}</span> has been
                   updated and secured in the BNHS-OMES directory.
                 </p>
               </div>
@@ -796,15 +879,15 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
               <div className="p-4 bg-stone-50 rounded-xl border border-stone-200 max-w-md mx-auto text-left text-xs space-y-2">
                 <div className="flex items-center gap-2 text-stone-700 font-bold">
                   <Shield className="w-4 h-4 text-emerald-600" />
-                  <span>Supervisor Account Status</span>
+                  <span>Account Status</span>
                 </div>
                 <div className="text-[11px] text-stone-600 space-y-1">
                   <div>
-                    <span className="text-stone-400">Account:</span> {targetSupervisor?.fullName} (
-                    {targetSupervisor?.position})
+                    <span className="text-stone-400">Account:</span> {targetAccount?.fullName} (
+                    {targetAccount?.position})
                   </div>
                   <div>
-                    <span className="text-stone-400">Department:</span> {targetSupervisor?.department}
+                    <span className="text-stone-400">Department:</span> {targetAccount?.department}
                   </div>
                   <div>
                     <span className="text-stone-400">Privacy:</span> Fully segregated & protected
@@ -823,10 +906,10 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
                 <button
                   type="button"
                   onClick={handleInstantLogin}
-                  className="w-full sm:w-auto px-6 py-2.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-6 py-2.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
                 >
                   <UserCheck className="w-4 h-4" />
-                  <span>Sign In as {targetSupervisor?.fullName.split(',')[0]} Now</span>
+                  <span>Sign In as {targetAccount?.fullName.split(',')[0]} Now</span>
                 </button>
               </div>
             </div>

@@ -10,8 +10,11 @@ import {
   resolveRecordSupervisor,
   resolveRecordSupervisorName,
   resolveActiveSupervisorForUser,
+  resolveActiveMentorForUser,
+  resolveRecordMentor,
   getScopedTeachersForModal,
 } from '../utils/supervisionScope';
+import { printTableReportToPdf } from '../utils/printTablePdf';
 import {
   initGoogleDriveAuth,
   googleDriveSignIn,
@@ -52,6 +55,7 @@ export const LessonPlanCheckView: React.FC = () => {
     lessonPlans,
     teachers,
     supervisors,
+    mentors,
     addLessonPlan,
     updateLessonPlan,
     deleteLessonPlan,
@@ -64,8 +68,9 @@ export const LessonPlanCheckView: React.FC = () => {
     updateFarRecord,
     verifyFarRecord,
     deleteFarRecord,
+    schoolProfile,
   } = useData();
-  const { currentUser, isAdmin, isSupervisor, isTeacher } = useAuth();
+  const { currentUser, isAdmin, isSupervisor, isMentor, isTeacher } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
@@ -75,10 +80,11 @@ export const LessonPlanCheckView: React.FC = () => {
   const [planToDelete, setPlanToDelete] = useState<LessonPlanCheck | null>(null);
   const [activeReviewPlan, setActiveReviewPlan] = useState<LessonPlanCheck | null>(null);
 
-  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors);
+  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors, mentors);
+  const activeMentor = resolveActiveMentorForUser(currentUser, teachers, mentors);
 
   // New / Edit submission state
-  const [teacherId, setTeacherId] = useState(teachers[0]?.id || '');
+  const [teacherId, setTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
   const [supervisorId, setSupervisorId] = useState(supervisors[0]?.id || '');
   const [subjectGrade, setSubjectGrade] = useState('Science 9');
   const [lessonTitle, setLessonTitle] = useState('');
@@ -167,8 +173,8 @@ export const LessonPlanCheckView: React.FC = () => {
 
   // Resolve selected teacher in submission modal
   const selectedTeacher = isTeacher
-    ? teachers.find((t) => t.fullName === currentUser.fullName) || teachers[0]
-    : teachers.find((t) => t.id === teacherId) || teachers[0];
+    ? teachers.find((t) => t.fullName === currentUser?.fullName) || scopedTeachers[0] || teachers[0]
+    : scopedTeachers.find((t) => t.id === teacherId) || teachers.find((t) => t.id === teacherId) || scopedTeachers[0] || teachers[0];
 
   // Resolve selected supervisor from option box (with fallback to teacher's assigned supervisor)
   const assignedSupervisor =
@@ -177,25 +183,27 @@ export const LessonPlanCheckView: React.FC = () => {
       ? supervisors.find((s) => s.id === selectedTeacher.assignedSupervisorId) || supervisors[0]
       : supervisors[0]);
 
-  const filteredPlans = lessonPlans.filter((lp) => {
-    if (
-      !matchesRoleSupervisionScope(
-        lp,
-        currentUser,
-        teachers,
-        supervisors,
-        selectedSupervisorFilterId
-      )
-    ) {
-      return false;
-    }
+  const scopedLessonPlans = lessonPlans.filter((lp) =>
+    matchesRoleSupervisionScope(
+      lp,
+      currentUser,
+      teachers,
+      supervisors,
+      selectedSupervisorFilterId,
+      mentors
+    )
+  );
+
+  const filteredPlans = scopedLessonPlans.filter((lp) => {
     const supName = resolveRecordSupervisorName(lp, teachers, supervisors);
+    const mentorRec = resolveRecordMentor(lp, teachers, mentors);
     const matchesSearch =
       lp.teacherName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lp.lessonTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lp.subjectGrade.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lp.supervisorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      supName.toLowerCase().includes(searchQuery.toLowerCase());
+      supName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (lp.mentorName || mentorRec?.fullName || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = selectedStatus === 'All' || lp.status === selectedStatus;
     return matchesSearch && matchesStatus;
   });
@@ -211,12 +219,14 @@ export const LessonPlanCheckView: React.FC = () => {
         currentUser,
         teachers,
         supervisors,
-        selectedSupervisorFilterId
+        selectedSupervisorFilterId,
+        mentors
       )
     ) {
       return false;
     }
     const supName = resolveRecordSupervisorName(r, teachers, supervisors);
+    const mentorRec = resolveRecordMentor(r, teachers, mentors);
     return (
       !q ||
       r.teacherName.toLowerCase().includes(q) ||
@@ -224,7 +234,8 @@ export const LessonPlanCheckView: React.FC = () => {
       r.criticalIncidentDescription.toLowerCase().includes(q) ||
       r.actionPlanOutput.toLowerCase().includes(q) ||
       r.supervisorName.toLowerCase().includes(q) ||
-      supName.toLowerCase().includes(q)
+      supName.toLowerCase().includes(q) ||
+      (r.mentorName || mentorRec?.fullName || '').toLowerCase().includes(q)
     );
   });
 
@@ -237,12 +248,14 @@ export const LessonPlanCheckView: React.FC = () => {
         currentUser,
         teachers,
         supervisors,
-        selectedSupervisorFilterId
+        selectedSupervisorFilterId,
+        mentors
       )
     ) {
       return false;
     }
     const supName = resolveRecordSupervisorName(r, teachers, supervisors);
+    const mentorRec = resolveRecordMentor(r, teachers, mentors);
     return (
       !q ||
       r.teacherName.toLowerCase().includes(q) ||
@@ -251,7 +264,8 @@ export const LessonPlanCheckView: React.FC = () => {
       r.findings.toLowerCase().includes(q) ||
       r.analysis.toLowerCase().includes(q) ||
       r.recommendations.toLowerCase().includes(q) ||
-      supName.toLowerCase().includes(q)
+      supName.toLowerCase().includes(q) ||
+      (r.mentorName || mentorRec?.fullName || '').toLowerCase().includes(q)
     );
   });
 
@@ -281,11 +295,20 @@ export const LessonPlanCheckView: React.FC = () => {
 
   const handleSavePmcf = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacher = teachers.find((t) => t.id === pmcfTeacherId) || teachers[0];
+    const teacher =
+      scopedTeachers.find((t) => t.id === pmcfTeacherId) ||
+      teachers.find((t) => t.id === pmcfTeacherId) ||
+      scopedTeachers[0] ||
+      teachers[0];
     if (!teacher) return;
     const resolvedSup =
       resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
       resolveRecordSupervisor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, supervisors);
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, mentors);
+    const evaluatorRole = isMentor ? 'mentor' : isSupervisor ? 'supervisor' : 'admin';
+
     if (editingPmcf) {
       updatePMCFRecord(editingPmcf.id, {
         category: 'lesson-plan',
@@ -293,6 +316,9 @@ export const LessonPlanCheckView: React.FC = () => {
         teacherName: teacher.fullName,
         supervisorId: resolvedSup?.id || editingPmcf.supervisorId,
         supervisorName: resolvedSup?.fullName || editingPmcf.supervisorName,
+        mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : (editingPmcf.mentorId || resolvedMentor?.id),
+        mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : (editingPmcf.mentorName || resolvedMentor?.fullName),
+        evaluatorRole: editingPmcf.evaluatorRole || evaluatorRole,
         quarterTerm: pmcfQuarterTerm,
         criticalIncidentDescription: pmcfCriticalIncidentDescription,
         coachingMechanism: pmcfCoachingMechanism,
@@ -306,8 +332,11 @@ export const LessonPlanCheckView: React.FC = () => {
         category: 'lesson-plan',
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || (isMentor ? teacher.assignedSupervisorId : currentUser?.id || 'sup-principal'),
+        supervisorName: resolvedSup?.fullName || (isMentor ? 'Assigned Instructional Supervisor' : currentUser?.fullName || 'Administrator'),
+        mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : resolvedMentor?.id,
+        mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : resolvedMentor?.fullName,
+        evaluatorRole,
         date: new Date().toISOString().slice(0, 10),
         quarterTerm: pmcfQuarterTerm,
         criticalIncidentDescription: pmcfCriticalIncidentDescription,
@@ -351,11 +380,20 @@ export const LessonPlanCheckView: React.FC = () => {
 
   const handleSaveFar = (e: React.FormEvent) => {
     e.preventDefault();
-    const teacher = teachers.find((t) => t.id === farTeacherId) || teachers[0];
+    const teacher =
+      scopedTeachers.find((t) => t.id === farTeacherId) ||
+      teachers.find((t) => t.id === farTeacherId) ||
+      scopedTeachers[0] ||
+      teachers[0];
     if (!teacher) return;
     const resolvedSup =
       resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
       resolveRecordSupervisor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, supervisors);
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, mentors);
+    const evaluatorRole = isMentor ? 'mentor' : isSupervisor ? 'supervisor' : 'admin';
+
     if (editingFar) {
       updateFarRecord(editingFar.id, {
         category: 'lesson-plan',
@@ -363,6 +401,9 @@ export const LessonPlanCheckView: React.FC = () => {
         teacherName: teacher.fullName,
         supervisorId: resolvedSup?.id || editingFar.supervisorId,
         supervisorName: resolvedSup?.fullName || editingFar.supervisorName,
+        mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : (editingFar.mentorId || resolvedMentor?.id),
+        mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : (editingFar.mentorName || resolvedMentor?.fullName),
+        evaluatorRole: editingFar.evaluatorRole || evaluatorRole,
         term: farTerm,
         lessonPlanWeek: farLessonPlanWeek.trim() || 'Week 1',
         findings: farFindings.trim(),
@@ -376,8 +417,11 @@ export const LessonPlanCheckView: React.FC = () => {
         category: 'lesson-plan',
         teacherId: teacher.id,
         teacherName: teacher.fullName,
-        supervisorId: resolvedSup?.id || currentUser.id,
-        supervisorName: resolvedSup?.fullName || currentUser.fullName,
+        supervisorId: resolvedSup?.id || (isMentor ? teacher.assignedSupervisorId : currentUser?.id || 'sup-principal'),
+        supervisorName: resolvedSup?.fullName || (isMentor ? 'Assigned Instructional Supervisor' : currentUser?.fullName || 'Administrator'),
+        mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : resolvedMentor?.id,
+        mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : resolvedMentor?.fullName,
+        evaluatorRole,
         term: farTerm,
         lessonPlanWeek: farLessonPlanWeek.trim() || 'Week 1',
         findings: farFindings.trim(),
@@ -403,14 +447,23 @@ export const LessonPlanCheckView: React.FC = () => {
 
   const handleSaveReview = () => {
     if (!activeReviewPlan) return;
+    const resolvedSup =
+      resolveActiveSupervisorForUser(currentUser, teachers, supervisors) ||
+      resolveRecordSupervisor(activeReviewPlan, teachers, supervisors);
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor(activeReviewPlan, teachers, mentors);
     updateLessonPlan(activeReviewPlan.id, {
       checklist: reviewChecklist,
       status: reviewStatus,
       remarks: reviewRemarks || (reviewStatus === 'Approved' ? 'Complied with DepEd Order 42 standards.' : 'Needs completion.'),
       supervisorFeedback: reviewFeedback || 'Inspection completed.',
       dateChecked: new Date().toISOString().slice(0, 10),
-      supervisorId: currentUser.id,
-      supervisorName: currentUser.fullName,
+      supervisorId: isMentor ? (resolvedSup?.id || activeReviewPlan.supervisorId) : (currentUser?.id || activeReviewPlan.supervisorId),
+      supervisorName: isMentor ? (resolvedSup?.fullName || activeReviewPlan.supervisorName) : (currentUser?.fullName || activeReviewPlan.supervisorName),
+      mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : activeReviewPlan.mentorId,
+      mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : activeReviewPlan.mentorName,
+      evaluatorRole: isMentor ? 'mentor' : isSupervisor ? 'supervisor' : 'admin',
       driveUrl: reviewDriveUrl || activeReviewPlan.driveUrl,
     });
     setActiveReviewPlan(null);
@@ -473,7 +526,7 @@ export const LessonPlanCheckView: React.FC = () => {
       }
 
       // 3. Upload file directly to the specified Google Drive folder via Drive API v3
-      const teacherNameForDesc = selectedTeacher?.fullName || currentUser.fullName;
+      const teacherNameForDesc = selectedTeacher?.fullName || currentUser?.fullName || '';
       const uploadOptions = {
         accessToken: token,
         folderUrl: destinationDriveUrl,
@@ -554,7 +607,7 @@ export const LessonPlanCheckView: React.FC = () => {
   const handleOpenSubmitModal = () => {
     setEditingPlan(null);
     const initialTeacher = isTeacher
-      ? teachers.find((t) => t.fullName === currentUser.fullName) || scopedTeachers[0] || teachers[0]
+      ? teachers.find((t) => t.fullName === currentUser?.fullName) || scopedTeachers[0] || teachers[0]
       : scopedTeachers[0] || teachers[0];
 
     if (initialTeacher) {
@@ -613,13 +666,18 @@ export const LessonPlanCheckView: React.FC = () => {
   const handleSubmitNewPlan = (e: React.FormEvent) => {
     e.preventDefault();
     const teacher = isTeacher
-      ? teachers.find((t) => t.fullName === currentUser.fullName) || teachers[0]
-      : teachers.find((t) => t.id === teacherId) || teachers[0];
+      ? teachers.find((t) => t.fullName === currentUser?.fullName) || scopedTeachers[0] || teachers[0]
+      : scopedTeachers.find((t) => t.id === teacherId) || teachers.find((t) => t.id === teacherId) || scopedTeachers[0] || teachers[0];
+    if (!teacher) return;
 
     const targetSupervisor =
       supervisors.find((s) => s.id === supervisorId) ||
       supervisors.find((s) => s.id === teacher.assignedSupervisorId) ||
       supervisors[0];
+
+    const resolvedMentor =
+      activeMentor ||
+      resolveRecordMentor({ teacherId: teacher.id, teacherName: teacher.fullName }, teachers, mentors);
 
     if (editingPlan) {
       updateLessonPlan(editingPlan.id, {
@@ -628,6 +686,9 @@ export const LessonPlanCheckView: React.FC = () => {
         department: teacher.department,
         supervisorId: targetSupervisor ? targetSupervisor.id : teacher.assignedSupervisorId,
         supervisorName: targetSupervisor ? targetSupervisor.fullName : 'Assigned Instructional Supervisor',
+        mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : (editingPlan.mentorId || resolvedMentor?.id),
+        mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : (editingPlan.mentorName || resolvedMentor?.fullName),
+        evaluatorRole: isMentor ? 'mentor' : editingPlan.evaluatorRole,
         weekNumber,
         quarterTerm,
         subjectGrade,
@@ -648,6 +709,9 @@ export const LessonPlanCheckView: React.FC = () => {
         department: teacher.department,
         supervisorId: targetSupervisor ? targetSupervisor.id : teacher.assignedSupervisorId,
         supervisorName: targetSupervisor ? targetSupervisor.fullName : 'Assigned Instructional Supervisor',
+        mentorId: isMentor ? (resolvedMentor?.id || currentUser?.mentorId || currentUser?.id) : resolvedMentor?.id,
+        mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : resolvedMentor?.fullName,
+        evaluatorRole: isMentor ? 'mentor' : isSupervisor ? 'supervisor' : undefined,
         dateSubmitted: new Date().toISOString().slice(0, 10),
         dateChecked: 'Pending',
         weekNumber,
@@ -686,6 +750,44 @@ export const LessonPlanCheckView: React.FC = () => {
     setUploadedFileSize(undefined);
     setSelectedFile(null);
     setPendingReplaceFile(null);
+  };
+
+  const handlePrintLessonPlansTable = () => {
+    printTableReportToPdf({
+      title: 'Daily Lesson Log (DLL) & Detailed Lesson Plan Verification Table',
+      subtitle: `DepEd Order No. 42, s. 2016 · Status Filter: ${selectedStatus}`,
+      schoolName: schoolProfile.schoolName,
+      schoolId: schoolProfile.schoolId,
+      address: schoolProfile.address,
+      preparedBy: currentUser?.fullName || 'Instructional Supervisor',
+      headers: [
+        'Code / Week',
+        'Teacher',
+        'Subject & Lesson Topic',
+        'Supervisor / Mentor',
+        'Submitted / Checked',
+        'Status',
+        'Remarks & Feedback',
+      ],
+      rows: filteredPlans.map((lp) => {
+        const supName = resolveRecordSupervisorName(lp, teachers, supervisors);
+        const mentorName =
+          lp.mentorName || resolveRecordMentor(lp, teachers, mentors)?.fullName;
+        const evaluatorText =
+          lp.evaluatorRole === 'mentor' && mentorName
+            ? `Mentor: ${mentorName}\nSupervisor: ${supName}`
+            : `Supervisor: ${supName}${mentorName ? `\nMentor: ${mentorName}` : ''}`;
+        return [
+          `${lp.checkCode || 'DLL'}\n${formatWeekOrCo(lp.weekNumber)} (${lp.quarterTerm})`,
+          `${lp.teacherName}\n${lp.department}`,
+          `${lp.subjectGrade}\n${lp.lessonTitle}`,
+          evaluatorText,
+          `Submitted: ${lp.dateSubmitted}\nChecked: ${lp.dateChecked}`,
+          lp.status,
+          `${lp.remarks || '—'}\n${lp.supervisorFeedback || ''}`.trim(),
+        ];
+      }),
+    });
   };
 
   return (
@@ -742,6 +844,7 @@ export const LessonPlanCheckView: React.FC = () => {
         currentUser={currentUser}
         teachers={teachers}
         supervisors={supervisors}
+        mentors={mentors}
         moduleLabel="Daily Lesson Log (DLL), PMCF & FAR for Lesson Plan Tables"
       />
 
@@ -765,7 +868,7 @@ export const LessonPlanCheckView: React.FC = () => {
             onChange={(e) => setSelectedStatus(e.target.value)}
             className="text-xs border border-stone-300 rounded-lg px-3 py-1.5 bg-white text-stone-700 focus:outline-none focus:ring-1 focus:ring-[#701628] font-medium"
           >
-            <option value="All">All Statuses ({lessonPlans.length})</option>
+            <option value="All">All Statuses ({scopedLessonPlans.length})</option>
             <option value="Approved">Approved</option>
             <option value="Needs Revision">Needs Revision</option>
             <option value="Pending Inspection">Pending Inspection</option>
@@ -775,6 +878,30 @@ export const LessonPlanCheckView: React.FC = () => {
 
       {/* Lesson Plans Table */}
       <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
+        <div className="px-5 py-3.5 bg-stone-50/80 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-stone-900">
+              Daily Lesson Log (DLL) &amp; Detailed Lesson Plan Table
+            </h3>
+            <p className="text-[11px] text-stone-500">
+              Weekly Lesson Plan Checking · Aligned with ILAW &amp; DepEd Order No. 42, s. 2016
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
+              {filteredPlans.length} {filteredPlans.length === 1 ? 'Record' : 'Records'}
+            </span>
+            <button
+              type="button"
+              onClick={handlePrintLessonPlansTable}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
+              title="Print / Export Daily Lesson Log Table to PDF"
+            >
+              <Printer className="w-3.5 h-3.5 text-amber-300" />
+              <span>Print to PDF</span>
+            </button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
@@ -840,6 +967,11 @@ export const LessonPlanCheckView: React.FC = () => {
                         <div className="text-[10px] text-stone-500 mb-1.5 font-medium">
                           {planSupervisor ? `${planSupervisor.position} · ${planSupervisor.department}` : 'Instructional Supervisor'}
                         </div>
+                        {(lp.mentorName || lp.evaluatorRole === 'mentor') && (
+                          <div className="text-[10px] text-violet-800 font-semibold mb-1">
+                            Mentor: {lp.mentorName || resolveRecordMentor(lp, teachers, mentors)?.fullName}
+                          </div>
+                        )}
                         {lp.uploadedFileName && (
                           <div className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 mb-1 inline-flex items-center gap-1 max-w-[190px] truncate">
                             <FileText className="w-3 h-3 text-emerald-700 shrink-0" />
@@ -1042,6 +1174,11 @@ export const LessonPlanCheckView: React.FC = () => {
                       <div className="text-[10px] text-stone-500">
                         Instructional Supervisor: {resolveRecordSupervisorName(r, teachers, supervisors)}
                       </div>
+                      {(r.mentorName || r.evaluatorRole === 'mentor') && (
+                        <div className="text-[10px] font-semibold text-violet-800 mt-0.5">
+                          Mentor: {r.mentorName || resolveRecordMentor(r, teachers, mentors)?.fullName}
+                        </div>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span className="inline-flex items-center text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded">
@@ -1195,6 +1332,11 @@ export const LessonPlanCheckView: React.FC = () => {
                         <div className="text-[10px] font-medium text-[#701628] mt-0.5">
                           Supervisor: {resolveRecordSupervisorName(r, teachers, supervisors)}
                         </div>
+                        {(r.mentorName || r.evaluatorRole === 'mentor') && (
+                          <div className="text-[10px] font-semibold text-violet-800 mt-0.5">
+                            Mentor: {r.mentorName || resolveRecordMentor(r, teachers, mentors)?.fullName}
+                          </div>
+                        )}
                         <div className="flex items-center gap-1.5 mt-1">
                           <span className="text-[10px] font-semibold bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.5 rounded">
                             {r.term}
@@ -1638,7 +1780,7 @@ export const LessonPlanCheckView: React.FC = () => {
                     }}
                     className="w-full border border-stone-300 rounded-xl p-2.5 bg-white text-stone-800 font-semibold focus:outline-none focus:ring-2 focus:ring-[#701628]"
                   >
-                    {teachers.map((t) => (
+                    {scopedTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName}
                       </option>
@@ -1921,7 +2063,7 @@ export const LessonPlanCheckView: React.FC = () => {
                     onChange={(e) => setPmcfTeacherId(e.target.value)}
                     className="w-full border border-stone-300 rounded-lg p-2 bg-white"
                   >
-                    {teachers.map((t) => (
+                    {scopedTeachers.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.fullName} ({t.department})
                       </option>
@@ -2081,7 +2223,7 @@ export const LessonPlanCheckView: React.FC = () => {
                   onChange={(e) => setFarTeacherId(e.target.value)}
                   className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium"
                 >
-                  {teachers.map((t) => (
+                  {scopedTeachers.map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.fullName} ({t.department} · {t.position} - {t.subject})
                     </option>

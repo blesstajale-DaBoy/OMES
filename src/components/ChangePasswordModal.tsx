@@ -14,8 +14,15 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   onClose,
   onOpenForgotPassword,
 }) => {
-  const { currentUser, isSupervisor, isAdmin } = useAuth();
-  const { supervisors, updateSupervisorPassword } = useData();
+  const { currentUser, isSupervisor, isMentor, isTeacher, isAdmin } = useAuth();
+  const {
+    supervisors,
+    mentors,
+    teachers,
+    updateSupervisorPassword,
+    updateMentorPassword,
+    updateTeacherPassword,
+  } = useData();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -23,10 +30,23 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  if (!isOpen) return null;
+  if (!isOpen || !currentUser) return null;
 
   const currentSupervisor = isSupervisor
     ? supervisors.find((s) => s.id === currentUser.supervisorId || s.id === currentUser.id)
+    : null;
+
+  const currentMentor = isMentor
+    ? mentors.find((m) => m.id === currentUser.mentorId || m.id === currentUser.id)
+    : null;
+
+  const currentTeacher = isTeacher
+    ? teachers.find(
+        (t) =>
+          t.id === currentUser.teacherId ||
+          t.id === currentUser.id ||
+          t.fullName.trim().toLowerCase() === currentUser.fullName.trim().toLowerCase()
+      )
     : null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -49,13 +69,36 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
         setErrorMsg('Current password is incorrect.');
         return;
       }
-
       updateSupervisorPassword(currentSupervisor.id, newPassword);
-      setSuccessMsg('Your password has been changed successfully!');
+      setSuccessMsg('Your supervisor password has been changed successfully!');
       setTimeout(() => {
         setSuccessMsg('');
         onClose();
-      }, 1000);
+      }, 900);
+    } else if (isMentor && currentMentor) {
+      const actualCurrentPass = currentMentor.password || 'omes123';
+      if (currentPassword !== actualCurrentPass) {
+        setErrorMsg('Current password is incorrect.');
+        return;
+      }
+      updateMentorPassword(currentMentor.id, newPassword);
+      setSuccessMsg('Your mentor password has been changed successfully!');
+      setTimeout(() => {
+        setSuccessMsg('');
+        onClose();
+      }, 900);
+    } else if (isTeacher && currentTeacher) {
+      const actualCurrentPass = currentTeacher.password || 'omes123';
+      if (currentPassword !== actualCurrentPass) {
+        setErrorMsg('Current password is incorrect.');
+        return;
+      }
+      updateTeacherPassword(currentTeacher.id, newPassword);
+      setSuccessMsg('Your personal faculty password has been changed successfully!');
+      setTimeout(() => {
+        setSuccessMsg('');
+        onClose();
+      }, 900);
     } else if (isAdmin) {
       const actualAdminPass = localStorage.getItem('bnhs_omes_admin_pass') || 'omes123';
       if (currentPassword !== actualAdminPass) {
@@ -67,7 +110,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
       setTimeout(() => {
         setSuccessMsg('');
         onClose();
-      }, 1000);
+      }, 900);
     }
   };
 
@@ -146,7 +189,7 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
             </div>
           </div>
 
-          {onOpenForgotPassword && (
+          {(isSupervisor || isMentor) && onOpenForgotPassword && (
             <div className="pt-1 text-center sm:text-left">
               <button
                 type="button"
@@ -154,9 +197,9 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
                   onClose();
                   onOpenForgotPassword();
                 }}
-                className="text-[11px] text-[#701628] hover:text-[#580e1c] font-bold hover:underline"
+                className="text-[11px] text-[#701628] hover:text-[#580e1c] font-bold hover:underline cursor-pointer"
               >
-                Forgot your current password? Reset via Supervisor Verification Code (OTP) →
+                Forgot your current password? Reset via Verification Code (OTP) →
               </button>
             </div>
           )}
@@ -165,13 +208,13 @@ export const ChangePasswordModal: React.FC<ChangePasswordModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-stone-300 rounded-lg text-stone-700 font-semibold"
+              className="px-4 py-2 border border-stone-300 rounded-lg text-stone-700 font-semibold cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-[#701628] hover:bg-[#580e1c] text-white font-bold rounded-lg shadow-xs"
+              className="px-5 py-2 bg-[#701628] hover:bg-[#580e1c] text-white font-bold rounded-lg shadow-xs cursor-pointer"
             >
               Update Password
             </button>

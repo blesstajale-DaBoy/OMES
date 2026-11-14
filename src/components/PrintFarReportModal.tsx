@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
 import { FarRecord } from '../types';
+import { getScopedTeachersForModal } from '../utils/supervisionScope';
 import {
   X,
   Printer,
@@ -29,8 +30,8 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
   initialSelectedRecordId,
   records,
 }) => {
-  const { farRecords, schoolProfile, teachers } = useData();
-  const { currentUser } = useAuth();
+  const { farRecords, schoolProfile, teachers, supervisors, mentors } = useData();
+  const { currentUser, isTeacher, isMentor } = useAuth();
   const sourceRecords = records ?? farRecords;
 
   const [selectedTerm, setSelectedTerm] = useState<string>('All');
@@ -45,6 +46,15 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
   );
 
   if (!isOpen) return null;
+
+  const scopedTeachers = getScopedTeachersForModal(currentUser, teachers, supervisors, mentors);
+  const availableTeacherIdsInRecords = new Set(sourceRecords.map((r) => r.teacherId));
+  const filterTeacherOptions =
+    scopedTeachers.length > 0
+      ? scopedTeachers
+      : teachers.filter((t) => availableTeacherIdsInRecords.has(t.id));
+  const officerName = currentUser?.fullName || 'Instructional Supervisor';
+  const officerRoleLabel = isMentor ? 'Mentor' : 'Instructional Supervisor';
 
   // Filter records according to user selection in preview modal
   const displayedRecords = sourceRecords.filter((r) => {
@@ -90,7 +100,8 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
           </td>
           <td style="padding: 8px; border-right: 1px solid #cbd5e1;">
             <strong style="color: #0f172a;">${r.teacherName}</strong><br/>
-            <span style="font-size: 10px; color: #64748b;">${r.term} · ${r.lessonPlanWeek}</span>
+            <span style="font-size: 10px; color: #64748b;">${r.term} · ${r.lessonPlanWeek}</span><br/>
+            <span style="font-size: 10px; color: #701628;">${r.evaluatorRole === 'mentor' && r.mentorName ? `Mentor: ${r.mentorName}` : `Supervisor: ${r.supervisorName}`}</span>
           </td>
           <td style="padding: 8px; border-right: 1px solid #cbd5e1; line-height: 1.4;">
             ${r.findings.replace(/\n/g, '<br/>')}
@@ -166,7 +177,7 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
     <div class="meta-item"><strong>Reporting Scope:</strong> ${selectedTerm === 'All' ? 'All Terms (Consolidated)' : selectedTerm}</div>
     <div class="meta-item"><strong>Date Generated:</strong> ${currentDateFormatted}</div>
     <div class="meta-item"><strong>Total Records:</strong> ${displayedRecords.length} (${verifiedCount} Verified, ${inProgressCount} In Progress)</div>
-    <div class="meta-item"><strong>Supervisor:</strong> ${currentUser.fullName}</div>
+    <div class="meta-item"><strong>${officerRoleLabel}:</strong> ${officerName}</div>
   </div>
 
   <table>
@@ -189,8 +200,8 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
 
   <div class="signatories">
     <div>
-      <div class="sign-line">${currentUser.fullName}</div>
-      <div class="sign-title">Prepared by: Instructional Supervisor</div>
+      <div class="sign-line">${officerName}</div>
+      <div class="sign-title">Prepared by: ${officerRoleLabel}</div>
       <div style="font-size: 9px; color: #94a3b8; margin-top: 2px;">Date: ${currentDateFormatted}</div>
     </div>
     <div>
@@ -317,32 +328,34 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
             </div>
 
             {/* Teacher Filter */}
-            <div className="flex items-center gap-1">
-              <label htmlFor="far-teacher-select" className="text-stone-500 font-medium text-[11px]">Teacher:</label>
-              <select
-                id="far-teacher-select"
-                value={selectedTeacherId}
-                onChange={(e) => {
-                  setSelectedTeacherId(e.target.value);
-                  setIncludeOnlySelectedRecord(false);
-                }}
-                className="border border-stone-300 rounded px-2 py-1 text-xs bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#701628] max-w-[200px]"
-              >
-                <option value="All">All Faculty Members</option>
-                {teachers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.fullName}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isTeacher && (
+              <div className="flex items-center gap-1">
+                <label htmlFor="far-teacher-select" className="text-stone-500 font-medium text-[11px]">Teacher:</label>
+                <select
+                  id="far-teacher-select"
+                  value={selectedTeacherId}
+                  onChange={(e) => {
+                    setSelectedTeacherId(e.target.value);
+                    setIncludeOnlySelectedRecord(false);
+                  }}
+                  className="border border-stone-300 rounded px-2 py-1 text-xs bg-white text-stone-800 focus:outline-none focus:ring-1 focus:ring-[#701628] max-w-[200px]"
+                >
+                  <option value="All">All Scoped Teachers</option>
+                  {filterTeacherOptions.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.fullName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {initialSelectedRecordId && includeOnlySelectedRecord && (
               <button
                 onClick={() => setIncludeOnlySelectedRecord(false)}
                 className="text-[11px] font-bold text-[#701628] hover:underline cursor-pointer ml-1"
               >
-                Show Entire FAR Table ({farRecords.length})
+                Show Entire FAR Table ({sourceRecords.length})
               </button>
             )}
           </div>
@@ -399,8 +412,8 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
               </span>
             </div>
             <div>
-              <span className="font-semibold text-stone-500 block text-[10px] uppercase">Supervisory Officer:</span>
-              <span className="font-bold text-stone-900">{currentUser.fullName}</span>
+              <span className="font-semibold text-stone-500 block text-[10px] uppercase">{officerRoleLabel}:</span>
+              <span className="font-bold text-stone-900">{officerName}</span>
             </div>
           </div>
 
@@ -448,6 +461,11 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
                           </div>
                           <div className="text-[10px] text-stone-600 mt-0.5">
                             {r.term} · {r.lessonPlanWeek}
+                          </div>
+                          <div className="text-[10px] text-[#701628] mt-0.5">
+                            {r.evaluatorRole === 'mentor' && r.mentorName
+                              ? `Mentor: ${r.mentorName}`
+                              : `Supervisor: ${r.supervisorName}`}
                           </div>
                         </td>
 
@@ -503,10 +521,10 @@ export const PrintFarReportModal: React.FC<PrintFarReportModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-6 border-t border-stone-300 text-center text-xs page-break-inside-avoid">
             <div>
               <div className="border-b border-stone-800 pb-1 font-bold text-stone-900 uppercase">
-                {currentUser.fullName}
+                {officerName}
               </div>
               <div className="text-[11px] text-stone-600 mt-1 font-medium">Prepared by:</div>
-              <div className="text-[10px] text-stone-500">Instructional Supervisor / Observer</div>
+              <div className="text-[10px] text-stone-500">{officerRoleLabel} / Observer</div>
               <div className="text-[9px] text-stone-400 mt-0.5">Date: {currentDateFormatted}</div>
             </div>
 

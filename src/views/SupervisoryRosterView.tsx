@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { useAuth } from '../context/AuthContext';
-import { Teacher, Supervisor } from '../types';
+import { Teacher, Supervisor, Mentor } from '../types';
 import {
   DEPED_POSITION_GROUPS,
   DEPED_TEACHER_POSITION_GROUPS,
@@ -20,6 +20,7 @@ import {
   Phone,
   Building2,
   BookOpen,
+  BookMarked,
   GraduationCap,
   Table,
   Printer,
@@ -78,6 +79,7 @@ interface UnifiedPersonnelItem {
   phone?: string;
   roleType: 'Instructional Supervisor' | 'Teaching Personnel';
   assignedSupervisorName?: string;
+  assignedMentorName?: string;
   menteeCount?: number;
   originalTeacher?: Teacher;
   originalSupervisor?: Supervisor;
@@ -87,6 +89,7 @@ export const SupervisoryRosterView: React.FC = () => {
   const {
     teachers,
     supervisors,
+    mentors,
     addTeacher,
     updateTeacher,
     deleteTeacher,
@@ -94,6 +97,10 @@ export const SupervisoryRosterView: React.FC = () => {
     addSupervisor,
     updateSupervisor,
     deleteSupervisor,
+    addMentor,
+    updateMentor,
+    deleteMentor,
+    assignTeacherToMentor,
     schoolProfile,
     cloudSyncStatus,
     syncToCloudNow,
@@ -101,7 +108,7 @@ export const SupervisoryRosterView: React.FC = () => {
   const { isAdmin } = useAuth();
 
   // Active Tab
-  const [activeTab, setActiveTab] = useState<'all' | 'assignments-report' | 'teachers' | 'supervisors'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'assignments-report' | 'teachers' | 'supervisors' | 'mentors'>('all');
 
   // Real-time Search and Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -122,6 +129,7 @@ export const SupervisoryRosterView: React.FC = () => {
   const [subject, setSubject] = useState('Science');
   const [gradeLevels, setGradeLevels] = useState('Grade 9, Grade 10');
   const [assignedSupervisorId, setAssignedSupervisorId] = useState(supervisors[0]?.id || '');
+  const [assignedMentorId, setAssignedMentorId] = useState(mentors[0]?.id || '');
   const [email, setEmail] = useState('');
   const [teacherModalRoleType, setTeacherModalRoleType] = useState<'Teaching Personnel' | 'Instructional Supervisor'>('Teaching Personnel');
 
@@ -140,14 +148,30 @@ export const SupervisoryRosterView: React.FC = () => {
   const [supPhone, setSupPhone] = useState('');
   const [supModalRoleType, setSupModalRoleType] = useState<'Teaching Personnel' | 'Instructional Supervisor'>('Instructional Supervisor');
 
-  // Quick Assign Teacher to Supervisor Modal State
+  // Mentor Add/Edit Modal State
+  const [isMentorModalOpen, setIsMentorModalOpen] = useState(false);
+  const [editingMentor, setEditingMentor] = useState<Mentor | null>(null);
+  const [mentorFullName, setMentorFullName] = useState('');
+  const [mentorEmployeeId, setMentorEmployeeId] = useState('');
+  const [mentorPosition, setMentorPosition] = useState('Master Teacher I');
+  const [mentorDepartment, setMentorDepartment] = useState<string>('Junior High School');
+  const [mentorSubjectArea, setMentorSubjectArea] = useState('');
+  const [mentorEmail, setMentorEmail] = useState('');
+  const [mentorPhone, setMentorPhone] = useState('');
+
+  // Quick Assign Teacher to Supervisor / Mentor Modal State
   const [isQuickAssignModalOpen, setIsQuickAssignModalOpen] = useState(false);
   const [targetSupervisorForAssign, setTargetSupervisorForAssign] = useState<Supervisor | null>(null);
   const [selectedTeacherIdToAssign, setSelectedTeacherIdToAssign] = useState<string>('');
 
+  const [isQuickAssignMentorModalOpen, setIsQuickAssignMentorModalOpen] = useState(false);
+  const [targetMentorForAssign, setTargetMentorForAssign] = useState<Mentor | null>(null);
+  const [selectedTeacherIdForMentorAssign, setSelectedTeacherIdForMentorAssign] = useState<string>('');
+
   // Delete Confirmation Modals State
   const [teacherToDelete, setTeacherToDelete] = useState<Teacher | null>(null);
   const [supervisorToDelete, setSupervisorToDelete] = useState<Supervisor | null>(null);
+  const [mentorToDelete, setMentorToDelete] = useState<Mentor | null>(null);
 
   // Smart Real-Time Matching Functions for Name, Position, Department, ID, Subject
   const matchesSearch = (textToMatch: string, query: string) => {
@@ -553,6 +577,15 @@ export const SupervisoryRosterView: React.FC = () => {
         ? principal || supervisors.find((s) => s.id === t.assignedSupervisorId)
         : supervisors.find((s) => isTeacherAssignedToSupervisor(t, s));
 
+      const assignedMentor = !isPrincipal
+        ? mentors.find(
+            (m) =>
+              m.id === t.assignedMentorId ||
+              m.fullName === t.assignedMentorId ||
+              (m.assignedTeacherIds || []).includes(t.id)
+          )
+        : undefined;
+
       return {
         id: t.id,
         employeeId: t.employeeId,
@@ -563,6 +596,7 @@ export const SupervisoryRosterView: React.FC = () => {
         email: t.email,
         roleType: 'Teaching Personnel',
         assignedSupervisorName: sup?.fullName,
+        assignedMentorName: assignedMentor?.fullName,
         originalTeacher: t,
       };
     });
@@ -643,7 +677,36 @@ export const SupervisoryRosterView: React.FC = () => {
 
       return true;
     });
-  }, [teachers, eligibleFacultyTeachers, supervisors, searchQuery, quickFilter, departmentFilter, positionFilter]);
+  }, [teachers, eligibleFacultyTeachers, supervisors, mentors, searchQuery, quickFilter, departmentFilter, positionFilter]);
+
+  const isTeacherAssignedToMentor = (teacher: Teacher, mentor: Mentor) => {
+    if (isPrincipalPosition(teacher.position)) return false;
+    return (
+      teacher.assignedMentorId === mentor.id ||
+      teacher.assignedMentorId === mentor.fullName ||
+      (mentor.assignedTeacherIds || []).includes(teacher.id)
+    );
+  };
+
+  const filteredMentors = useMemo(() => {
+    const q = searchQuery.trim();
+    return mentors.filter((m) => {
+      const matchesQuery =
+        !q ||
+        matchesSearch(m.fullName, q) ||
+        matchesSearch(m.position, q) ||
+        matchesSearch(m.department, q) ||
+        matchesSearch(m.employeeId, q) ||
+        (m.subjectArea && matchesSearch(m.subjectArea, q)) ||
+        (m.email && matchesSearch(m.email, q));
+
+      const matchesDept = departmentFilter === 'All' || m.department === departmentFilter;
+      const matchesPos =
+        positionFilter === 'All' || m.position.toLowerCase().includes(positionFilter.toLowerCase());
+
+      return matchesQuery && matchesDept && matchesPos;
+    });
+  }, [mentors, searchQuery, departmentFilter, positionFilter]);
 
   // Unassigned eligible teachers (excludes Principal position faculty)
   const unassignedTeachers = useMemo(() => {
@@ -683,6 +746,7 @@ export const SupervisoryRosterView: React.FC = () => {
     setSubject('');
     setGradeLevels('Grade 7, Grade 8');
     setAssignedSupervisorId(supervisors[0]?.id || principal?.id || '');
+    setAssignedMentorId(mentors[0]?.id || '');
     setEmail('');
     setTeacherModalRoleType('Teaching Personnel');
     setIsAddTeacherModalOpen(true);
@@ -708,6 +772,13 @@ export const SupervisoryRosterView: React.FC = () => {
       );
       setAssignedSupervisorId(foundSup ? foundSup.id : (t.assignedSupervisorId || ''));
     }
+    const foundMentor = mentors.find(
+      (m) =>
+        m.id === t.assignedMentorId ||
+        m.fullName === t.assignedMentorId ||
+        (m.assignedTeacherIds || []).includes(t.id)
+    );
+    setAssignedMentorId(foundMentor ? foundMentor.id : (t.assignedMentorId || ''));
     setEmail(t.email);
     setTeacherModalRoleType('Teaching Personnel');
     setIsAddTeacherModalOpen(true);
@@ -770,6 +841,7 @@ export const SupervisoryRosterView: React.FC = () => {
       : isMasterTeacher
       ? (principal?.id || 'sup-principal')
       : assignedSupervisorId;
+    const effectiveMentorId = isPrincipal ? '' : assignedMentorId;
     const effectiveDepartment = isPrincipal && department !== 'School Principal' && department !== 'School Head'
       ? 'School Principal'
       : department;
@@ -783,10 +855,14 @@ export const SupervisoryRosterView: React.FC = () => {
         subject: trimmedSubject,
         gradeLevels: validGrades,
         assignedSupervisorId: effectiveSupervisorId,
+        assignedMentorId: effectiveMentorId,
         email: finalEmail,
       });
       if (!isPrincipal && effectiveSupervisorId && effectiveSupervisorId !== editingTeacher.assignedSupervisorId) {
         assignTeacherToSupervisor(editingTeacher.id, effectiveSupervisorId);
+      }
+      if (!isPrincipal && effectiveMentorId !== (editingTeacher.assignedMentorId || '')) {
+        assignTeacherToMentor(editingTeacher.id, effectiveMentorId);
       }
       setRecentlyUpdatedId(editingTeacher.id);
       setToastMessage({
@@ -805,6 +881,7 @@ export const SupervisoryRosterView: React.FC = () => {
         subject: trimmedSubject,
         gradeLevels: validGrades,
         assignedSupervisorId: effectiveSupervisorId,
+        assignedMentorId: effectiveMentorId,
         email: finalEmail,
         status: 'Active',
       });
@@ -952,14 +1029,96 @@ export const SupervisoryRosterView: React.FC = () => {
     setTimeout(() => setRecentlyUpdatedId(null), 6000);
   };
 
-  const handleDeleteSupervisor = (s: Supervisor) => {
-    const assignedCount = teachers.filter((t) => t.assignedSupervisorId === s.id).length;
-    let message = `Are you sure you want to delete Instructional Supervisor ${s.fullName}?`;
-    if (assignedCount > 0) {
-      message += `\n\nNote: ${assignedCount} teacher(s) are currently assigned to this supervisor and will be unassigned.`;
+  // Mentor Handlers
+  const handleOpenAddMentor = () => {
+    setEditingMentor(null);
+    setMentorFullName('');
+    setMentorEmployeeId(`MENTOR-${200 + mentors.length + 1}`);
+    setMentorPosition('Master Teacher I');
+    setMentorDepartment('Junior High School');
+    setMentorSubjectArea('');
+    setMentorEmail('');
+    setMentorPhone('');
+    setIsMentorModalOpen(true);
+  };
+
+  const handleOpenEditMentor = (m: Mentor) => {
+    setEditingMentor(m);
+    setMentorFullName(m.fullName);
+    setMentorEmployeeId(m.employeeId);
+    setMentorPosition(m.position);
+    setMentorDepartment(m.department || 'Junior High School');
+    setMentorSubjectArea(m.subjectArea || '');
+    setMentorEmail(m.email);
+    setMentorPhone(m.phone || '');
+    setIsMentorModalOpen(true);
+  };
+
+  const handleSaveMentor = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = mentorFullName.trim();
+    if (!trimmedName) return;
+    const finalEmail =
+      mentorEmail.trim() || `${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '.')}@deped.gov.ph`;
+
+    if (editingMentor) {
+      updateMentor(editingMentor.id, {
+        fullName: trimmedName,
+        employeeId: mentorEmployeeId.trim() || editingMentor.employeeId,
+        position: mentorPosition,
+        department: mentorDepartment,
+        subjectArea: mentorSubjectArea.trim(),
+        email: finalEmail,
+        phone: mentorPhone.trim(),
+      });
+      setRecentlyUpdatedId(editingMentor.id);
+      setToastMessage({
+        text: `Updated Mentor profile for ${trimmedName} (${mentorPosition}).`,
+        type: 'success',
+      });
+    } else {
+      addMentor({
+        employeeId: mentorEmployeeId.trim() || `MENTOR-${Date.now().toString().slice(-4)}`,
+        fullName: trimmedName,
+        position: mentorPosition,
+        department: mentorDepartment,
+        subjectArea: mentorSubjectArea.trim(),
+        email: finalEmail,
+        phone: mentorPhone.trim(),
+        assignedTeacherIds: [],
+      });
+      setRecentlyUpdatedId(mentorEmployeeId);
+      setToastMessage({
+        text: `Registered Mentor ${trimmedName} for Lesson Plans, Assessments, and IMs & LMs.`,
+        type: 'success',
+      });
     }
-    if (confirm(message)) {
-      deleteSupervisor(s.id);
+    setActiveTab('mentors');
+    setIsMentorModalOpen(false);
+    setEditingMentor(null);
+    setTimeout(() => setToastMessage(null), 4500);
+    setTimeout(() => setRecentlyUpdatedId(null), 6000);
+  };
+
+  const handleOpenQuickAssignMentor = (mentor: Mentor) => {
+    setTargetMentorForAssign(mentor);
+    const firstUnmentored = eligibleFacultyTeachers.find(
+      (t) => !t.assignedMentorId
+    );
+    setSelectedTeacherIdForMentorAssign(firstUnmentored?.id || eligibleFacultyTeachers[0]?.id || '');
+    setIsQuickAssignMentorModalOpen(true);
+  };
+
+  const handleExecuteQuickAssignMentor = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (targetMentorForAssign && selectedTeacherIdForMentorAssign) {
+      assignTeacherToMentor(selectedTeacherIdForMentorAssign, targetMentorForAssign.id);
+      setIsQuickAssignMentorModalOpen(false);
+      setToastMessage({
+        text: `Assigned mentee to Mentor ${targetMentorForAssign.fullName}.`,
+        type: 'success',
+      });
+      setTimeout(() => setToastMessage(null), 3500);
     }
   };
 
@@ -1101,11 +1260,11 @@ export const SupervisoryRosterView: React.FC = () => {
           </p>
         </div>
 
-        {/* Dual Add Buttons: Add New Faculty Member AND Add Instructional Supervisor */}
+        {/* Action Buttons: Add New Faculty Member, Add Instructional Supervisor, AND Add Mentor */}
         <div className="flex flex-wrap items-center gap-2.5 self-start lg:self-auto shrink-0">
           <button
             onClick={handleOpenAddTeacher}
-            className="flex items-center gap-2 px-4 py-2.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-xl shadow-sm transition-all focus:ring-2 focus:ring-[#701628]/30 active:scale-95"
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-xl shadow-sm transition-all focus:ring-2 focus:ring-[#701628]/30 active:scale-95 cursor-pointer"
             title="Register a new faculty member / teacher account"
           >
             <UserPlus className="w-4 h-4 text-amber-300" />
@@ -1120,10 +1279,19 @@ export const SupervisoryRosterView: React.FC = () => {
             <ShieldCheck className="w-4 h-4 text-emerald-200" />
             <span>Add Instructional Supervisor</span>
           </button>
+
+          <button
+            onClick={handleOpenAddMentor}
+            className="flex items-center gap-2 px-4 py-2.5 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl shadow-sm transition-all border border-teal-600/40 hover:border-teal-500 focus:ring-2 focus:ring-teal-700/30 active:scale-95 cursor-pointer"
+            title="Register a mentor for Lesson Plans, Assessments, and IMs & LMs"
+          >
+            <BookMarked className="w-4 h-4 text-teal-200" />
+            <span>Add Mentor</span>
+          </button>
         </div>
       </div>
 
-      {/* Tabs: Faculty, Table Format Report, Teaching Personnel, Instructional Supervisors */}
+      {/* Tabs: Faculty, Table Format Report, Teaching Personnel, Instructional Supervisors, Mentors */}
       <div className="flex border-b border-stone-200 bg-white px-4 sm:px-6 rounded-t-2xl gap-2 sm:gap-6 text-xs font-bold overflow-x-auto scrollbar-none">
         <button
           onClick={() => {
@@ -1187,6 +1355,20 @@ export const SupervisoryRosterView: React.FC = () => {
         >
           <ShieldCheck className="w-4 h-4" />
           <span>Instructional Supervisors Directory ({supervisors.length})</span>
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveTab('mentors');
+          }}
+          className={`py-3.5 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+            activeTab === 'mentors'
+              ? 'border-teal-700 text-teal-800 font-extrabold'
+              : 'border-transparent text-stone-500 hover:text-stone-800'
+          }`}
+        >
+          <BookMarked className="w-4 h-4 text-teal-700" />
+          <span>Mentors Directory ({mentors.length})</span>
         </button>
       </div>
 
@@ -1558,13 +1740,18 @@ export const SupervisoryRosterView: React.FC = () => {
                             <div className="text-[11px]">
                               <span className="font-semibold text-[#701628]">{p.subject || 'General'}</span>
                               {p.assignedSupervisorName && (
-                                <div className="text-stone-500 text-[10px] flex items-center gap-1 mt-0.5">
+                                <div className="text-stone-500 text-[10px] flex items-center gap-1 mt-0.5 flex-wrap">
                                   <span>Sup: {p.assignedSupervisorName.split(',')[0]}</span>
                                   {p.position.toLowerCase().includes('master teacher') && (
                                     <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
                                       Principal's Mentee
                                     </span>
                                   )}
+                                </div>
+                              )}
+                              {p.assignedMentorName && (
+                                <div className="text-teal-700 text-[10px] font-semibold mt-0.5">
+                                  Mentor: {p.assignedMentorName.split(',')[0]}
                                 </div>
                               )}
                             </div>
@@ -2444,6 +2631,16 @@ export const SupervisoryRosterView: React.FC = () => {
                                 Unassigned
                               </span>
                             )}
+                            {(() => {
+                              const assignedMentor = mentors.find((m) =>
+                                isTeacherAssignedToMentor(t, m)
+                              );
+                              return assignedMentor ? (
+                                <div className="text-[10px] text-teal-700 font-semibold mt-1">
+                                  Mentor: {assignedMentor.fullName}
+                                </div>
+                              ) : null;
+                            })()}
                           </td>
                           <td className="py-3 px-4 text-center font-mono">
                             <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-amber-50 text-amber-900 border border-amber-200">
@@ -2608,6 +2805,159 @@ export const SupervisoryRosterView: React.FC = () => {
                           className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                           title={`Delete ${s.fullName}`}
                           aria-label={`Delete ${s.fullName}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: MENTORS DIRECTORY (CARD VIEW) */}
+      {activeTab === 'mentors' && (
+        <div className="space-y-4">
+          <div className="bg-teal-50/80 border border-teal-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5">
+              <BookMarked className="w-5 h-5 text-teal-700 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-bold text-teal-950">Mentors Account Scope & Assignment Policy</div>
+                <p className="text-[11px] text-teal-800 mt-0.5">
+                  Mentors manage <strong>Lesson Plans (DLL/DLP)</strong>, <strong>Formative & Summative Assessments</strong>, and <strong>Instructional & Learners&apos; Materials (IMs & LMs)</strong> for their assigned mentees only, and auto-generate PMCF & FAR reports in their Mentor, Teacher, and Administrator accounts.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={handleOpenAddMentor}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl text-xs shadow-xs shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Add New Mentor</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredMentors.length === 0 ? (
+              <div className="col-span-full p-12 text-center bg-white rounded-2xl border border-stone-200 text-stone-500 text-xs space-y-2">
+                <SearchX className="w-6 h-6 mx-auto text-stone-400" />
+                <div className="font-bold text-stone-700">No mentor accounts match your search criteria.</div>
+                <button
+                  onClick={handleResetFilters}
+                  className="px-3 py-1.5 bg-teal-700 text-white rounded-lg text-xs font-semibold cursor-pointer"
+                >
+                  Reset Search & Filters
+                </button>
+              </div>
+            ) : (
+              filteredMentors.map((m) => {
+                const assignedList = eligibleFacultyTeachers.filter((t) =>
+                  isTeacherAssignedToMentor(t, m)
+                );
+                return (
+                  <div
+                    key={m.id}
+                    className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs flex flex-col justify-between hover:border-teal-400 transition-colors"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-1 mb-3 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-900 border border-teal-200 px-2 py-0.5 rounded">
+                            <HighlightMatch text={m.position} query={searchQuery} />
+                          </span>
+                          <span className="text-[9px] font-bold bg-teal-700 text-white px-2 py-0.5 rounded shadow-xs">
+                            Mentor
+                          </span>
+                        </div>
+                        <span className="text-xs font-mono text-stone-400">
+                          <HighlightMatch text={m.employeeId} query={searchQuery} />
+                        </span>
+                      </div>
+
+                      <h3 className="text-base font-bold text-stone-900">
+                        <HighlightMatch text={m.fullName} query={searchQuery} />
+                      </h3>
+                      <div className="text-xs text-stone-600 mt-0.5 font-medium flex items-center gap-1.5">
+                        <Building2 className="w-3.5 h-3.5 text-stone-400" />
+                        <span>
+                          <HighlightMatch text={m.department} query={searchQuery} />
+                          {m.subjectArea ? ` · ${m.subjectArea}` : ''}
+                        </span>
+                      </div>
+                      <div className="text-xs text-stone-500 mt-1 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-stone-400" />
+                        <span className="truncate">{m.email}</span>
+                      </div>
+                      {m.phone && (
+                        <div className="text-xs text-stone-500 mt-0.5 flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-stone-400" />
+                          <span>{m.phone}</span>
+                        </div>
+                      )}
+
+                      <div className="mt-2.5 text-[10px] font-bold text-teal-800 bg-teal-50/70 border border-teal-100 rounded-lg px-2.5 py-1.5">
+                        Domains: Lesson Plans · Assessments · IMs &amp; LMs
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-stone-100">
+                        <div className="flex justify-between items-center text-xs font-bold text-stone-800 mb-2">
+                          <span>Assigned Mentees ({assignedList.length}):</span>
+                          <button
+                            onClick={() => handleOpenQuickAssignMentor(m)}
+                            className="text-[11px] text-teal-700 hover:underline flex items-center gap-0.5 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3" />
+                            <span>Assign</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                          {assignedList.map((t) => (
+                            <div
+                              key={t.id}
+                              className="text-[11px] p-2 bg-stone-50 rounded-lg border border-stone-100 flex items-center justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-semibold text-stone-800 truncate">{t.fullName}</div>
+                                <div className="text-[10px] text-stone-500 truncate">
+                                  {t.position} · {t.subject || t.department}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => assignTeacherToMentor(t.id, '')}
+                                className="text-[10px] text-rose-600 hover:underline shrink-0 cursor-pointer"
+                                title="Unassign mentee"
+                              >
+                                Unlink
+                              </button>
+                            </div>
+                          ))}
+                          {assignedList.length === 0 && (
+                            <div className="text-[11px] text-stone-400 italic">No mentees currently assigned.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-stone-100 text-[11px] text-stone-400 flex justify-between items-center">
+                      <span className="font-medium text-stone-500">Barobo NHS Mentorship Roster</span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditMentor(m)}
+                          className="p-1.5 text-stone-600 hover:text-teal-800 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
+                          title="Edit Mentor"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setMentorToDelete(m)}
+                          className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title={`Delete ${m.fullName}`}
+                          aria-label={`Delete ${m.fullName}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -2798,53 +3148,73 @@ export const SupervisoryRosterView: React.FC = () => {
                   <span className="text-[10px] text-stone-400">Separate grade levels with commas</span>
                 </div>
 
-                {/* Assigned Instructional Supervisor */}
+                {/* Assigned Instructional Supervisor & Designated Mentor */}
                 {teacherModalRoleType === 'Teaching Personnel' && !isPrincipalPosition(position) && (
-                  <div className="col-span-2">
-                    <label className="block font-bold text-stone-700 mb-1">
-                      Designated Instructional Supervisor
-                    </label>
-                    {position.toLowerCase().includes('master teacher') ? (
-                      <div className="space-y-1">
+                  <>
+                    <div className="col-span-2">
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Designated Instructional Supervisor
+                      </label>
+                      {position.toLowerCase().includes('master teacher') ? (
+                        <div className="space-y-1">
+                          <select
+                            value={assignedSupervisorId}
+                            disabled
+                            className="w-full border border-amber-400 bg-amber-50/70 rounded-lg p-2 font-bold text-amber-950 cursor-not-allowed shadow-inner"
+                          >
+                            {supervisors
+                              .filter((s) => s.id === 'sup-principal' || s.position.toLowerCase().includes('principal'))
+                              .map((s) => (
+                                <option key={s.id} value={s.id}>
+                                  {s.fullName} ({s.position} - {s.department})
+                                </option>
+                              ))}
+                            {supervisors.filter((s) => s.id === 'sup-principal' || s.position.toLowerCase().includes('principal')).length === 0 && (
+                              <option value="sup-principal">Dr. Edwin G. Dela Cruz, EdD (Principal IV - School Head / Principal)</option>
+                            )}
+                          </select>
+                          <span className="text-[10px] text-amber-800 font-semibold flex items-center gap-1">
+                            <Sparkles className="w-3 h-3 text-amber-600" />
+                            Automatically assigned to the School Principal per DepEd policy for Master Teachers.
+                          </span>
+                        </div>
+                      ) : (
                         <select
                           value={assignedSupervisorId}
-                          disabled
-                          className="w-full border border-amber-400 bg-amber-50/70 rounded-lg p-2 font-bold text-amber-950 cursor-not-allowed shadow-inner"
+                          onChange={(e) => setAssignedSupervisorId(e.target.value)}
+                          className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium focus:ring-2 focus:ring-[#701628] focus:outline-none"
                         >
-                          {supervisors
-                            .filter((s) => s.id === 'sup-principal' || s.position.toLowerCase().includes('principal'))
-                            .map((s) => (
-                              <option key={s.id} value={s.id}>
-                                {s.fullName} ({s.position} - {s.department})
-                              </option>
-                            ))}
-                          {supervisors.filter((s) => s.id === 'sup-principal' || s.position.toLowerCase().includes('principal')).length === 0 && (
-                            <option value="sup-principal">Dr. Edwin G. Dela Cruz, EdD (Principal IV - School Head / Principal)</option>
+                          <option value="">Unassigned</option>
+                          {supervisors.map((s) => (
+                            <option key={s.id} value={s.id}>
+                              {s.fullName} ({s.position} - {s.department})
+                            </option>
+                          ))}
+                          {supervisors.length === 0 && (
+                            <option disabled value="">No registered instructional supervisors</option>
                           )}
                         </select>
-                        <span className="text-[10px] text-amber-800 font-semibold flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-amber-600" />
-                          Automatically assigned to the School Principal per DepEd policy for Master Teachers.
-                        </span>
-                      </div>
-                    ) : (
+                      )}
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="block font-bold text-stone-700 mb-1">
+                        Designated Mentor <span className="text-[10px] font-normal text-teal-700">(Lesson Plans, Assessments, IMs &amp; LMs)</span>
+                      </label>
                       <select
-                        value={assignedSupervisorId}
-                        onChange={(e) => setAssignedSupervisorId(e.target.value)}
-                        className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium focus:ring-2 focus:ring-[#701628] focus:outline-none"
+                        value={assignedMentorId}
+                        onChange={(e) => setAssignedMentorId(e.target.value)}
+                        className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium focus:ring-2 focus:ring-teal-700 focus:outline-none"
                       >
-                        <option value="">Unassigned</option>
-                        {supervisors.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.fullName} ({s.position} - {s.department})
+                        <option value="">(No Mentor Assigned)</option>
+                        {mentors.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.fullName} ({m.position}{m.subjectArea ? ` - ${m.subjectArea}` : ''})
                           </option>
                         ))}
-                        {supervisors.length === 0 && (
-                          <option disabled value="">No registered instructional supervisors</option>
-                        )}
                       </select>
-                    )}
-                  </div>
+                    </div>
+                  </>
                 )}
 
                 <div className="col-span-2">
@@ -3267,6 +3637,287 @@ export const SupervisoryRosterView: React.FC = () => {
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>Delete Supervisor</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 6: ADD / EDIT MENTOR MODAL */}
+      {isMentorModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-teal-800 px-6 py-4 text-white flex items-center justify-between border-b border-teal-500/30">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/15 rounded-lg text-teal-200">
+                  <BookMarked className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">
+                    {editingMentor ? 'Edit Mentor Account' : 'Add New Mentor Account'}
+                  </h3>
+                  <p className="text-xs text-teal-100/90">
+                    Lesson Plans, Assessments (Formative &amp; Summative), and IMs &amp; LMs
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMentorModalOpen(false)}
+                className="p-1.5 rounded-lg text-teal-100 hover:text-white hover:bg-white/10 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveMentor} className="p-6 space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block font-bold text-stone-700 mb-1">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={mentorFullName}
+                    onChange={(e) => setMentorFullName(e.target.value)}
+                    placeholder="e.g. Roberto C. Magsaysay, MT I"
+                    className="w-full border border-stone-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Employee ID</label>
+                  <input
+                    type="text"
+                    required
+                    value={mentorEmployeeId}
+                    onChange={(e) => setMentorEmployeeId(e.target.value)}
+                    className="w-full border border-stone-300 rounded-lg p-2 font-mono focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Position / Rank</label>
+                  <select
+                    value={mentorPosition}
+                    onChange={(e) => setMentorPosition(e.target.value)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  >
+                    {DEPED_POSITION_GROUPS.map((group) => (
+                      <optgroup key={group.category} label={group.category}>
+                        {group.positions.map((pos) => (
+                          <option key={pos} value={pos}>
+                            {pos}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Department</label>
+                  <select
+                    value={mentorDepartment}
+                    onChange={(e) => setMentorDepartment(e.target.value)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white font-medium focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  >
+                    <option value="Junior High School">Junior High School</option>
+                    <option value="Senior High School">Senior High School</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Subject Area Focus</label>
+                  <input
+                    type="text"
+                    value={mentorSubjectArea}
+                    onChange={(e) => setMentorSubjectArea(e.target.value)}
+                    placeholder="e.g. Science & Mathematics"
+                    className="w-full border border-stone-300 rounded-lg p-2 font-medium focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Official DepEd Email</label>
+                  <input
+                    type="email"
+                    value={mentorEmail}
+                    onChange={(e) => setMentorEmail(e.target.value)}
+                    placeholder="mentor@deped.gov.ph"
+                    className="w-full border border-stone-300 rounded-lg p-2 font-mono focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Phone Contact</label>
+                  <input
+                    type="text"
+                    value={mentorPhone}
+                    onChange={(e) => setMentorPhone(e.target.value)}
+                    placeholder="+63 9xx xxx xxxx"
+                    className="w-full border border-stone-300 rounded-lg p-2 focus:ring-2 focus:ring-teal-700 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-teal-50 rounded-lg border border-teal-200 text-teal-900 text-[11px]">
+                <div className="font-bold mb-0.5">Mentor Account Access &amp; Default Password</div>
+                Default password is <span className="font-mono font-bold">omes123</span>. Mentors only see and evaluate teachers assigned to them across Lesson Plans, Assessments (Formative &amp; Summative), and IMs &amp; LMs.
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => setIsMentorModalOpen(false)}
+                  className="px-4 py-2 border border-stone-300 rounded-lg text-stone-700 font-semibold hover:bg-stone-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  {editingMentor ? 'Update Mentor' : 'Save Mentor Account'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 7: QUICK ASSIGN MENTEE TO MENTOR */}
+      {isQuickAssignMentorModalOpen && targetMentorForAssign && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-stone-200 overflow-hidden my-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-teal-800 px-6 py-4 text-white flex items-center justify-between border-b border-teal-500/30">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/15 rounded-lg text-teal-200">
+                  <UserCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Assign Mentee to Mentor</h3>
+                  <p className="text-xs text-teal-100/90">{targetMentorForAssign.fullName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsQuickAssignMentorModalOpen(false)}
+                className="p-1.5 rounded-lg text-teal-100 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleExecuteQuickAssignMentor} className="p-6 space-y-4 text-xs">
+              <div className="p-3 bg-teal-50 rounded-xl border border-teal-200">
+                <div className="text-[10px] uppercase font-bold text-teal-700">Designated Mentor</div>
+                <div className="text-sm font-bold text-teal-950 mt-0.5">{targetMentorForAssign.fullName}</div>
+                <div className="text-teal-800 text-xs">{targetMentorForAssign.position} · {targetMentorForAssign.department}</div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-stone-700 mb-1.5">
+                  Select Faculty Member to Assign
+                </label>
+                <select
+                  value={selectedTeacherIdForMentorAssign}
+                  onChange={(e) => setSelectedTeacherIdForMentorAssign(e.target.value)}
+                  className="w-full p-2.5 text-xs font-semibold border border-stone-300 rounded-xl bg-white text-stone-800 focus:outline-none focus:ring-2 focus:ring-teal-700"
+                >
+                  <option value="" disabled>-- Select Teacher --</option>
+                  {eligibleFacultyTeachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.fullName} ({t.position} - {t.department})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-stone-500 mt-1">
+                  This mentor will be able to check Lesson Plans, Assessments, and IMs &amp; LMs for this teacher and generate PMCF/FAR reports.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => setIsQuickAssignMentorModalOpen(false)}
+                  className="px-4 py-2 border border-stone-300 rounded-lg text-stone-700 font-semibold hover:bg-stone-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-lg shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>Confirm Mentor Assignment</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 8: DELETE MENTOR CONFIRMATION MODAL */}
+      {mentorToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-xs overflow-y-auto animate-in fade-in duration-150">
+          <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-rose-200 overflow-hidden my-4">
+            <div className="bg-rose-700 px-6 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold">Delete Mentor Account</h3>
+                  <p className="text-xs text-rose-100">Barobo National High School OMES</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setMentorToDelete(null)}
+                className="p-1.5 rounded-lg text-rose-200 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 text-stone-800">
+                <p className="font-semibold text-rose-950 text-sm">
+                  Are you sure you want to delete this mentor account?
+                </p>
+                <div className="mt-2.5 space-y-1 text-xs">
+                  <div>
+                    <span className="font-bold text-stone-600">Mentor Name:</span>{' '}
+                    <strong className="text-stone-900">{mentorToDelete.fullName}</strong>
+                  </div>
+                  <div>
+                    <span className="font-bold text-stone-600">Position:</span>{' '}
+                    <span>{mentorToDelete.position}</span>
+                  </div>
+                  <div>
+                    <span className="font-bold text-stone-600">Department:</span>{' '}
+                    <span>{mentorToDelete.department}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-stone-200">
+                <button
+                  type="button"
+                  onClick={() => setMentorToDelete(null)}
+                  className="px-4 py-2 border border-stone-300 rounded-xl text-stone-700 font-semibold hover:bg-stone-50 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteMentor(mentorToDelete.id);
+                    setMentorToDelete(null);
+                  }}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Mentor</span>
                 </button>
               </div>
             </div>
