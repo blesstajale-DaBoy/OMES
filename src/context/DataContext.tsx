@@ -666,7 +666,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateTeacher = (id: string, updates: Partial<Teacher>) => {
     const oldTeacher = teachers.find((t) => t.id === id);
     const resolvedPosition = updates.position || oldTeacher?.position || '';
-    if (resolvedPosition.toLowerCase().includes('master teacher')) {
+    if (
+      (updates.position !== undefined || updates.assignedSupervisorId !== undefined) &&
+      resolvedPosition.toLowerCase().includes('master teacher')
+    ) {
       updates.assignedSupervisorId = 'sup-principal';
     }
     setTeachers((prev) =>
@@ -711,6 +714,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (updates.status && updates.status !== oldTeacher.status) {
         changes.push({ field: 'Status', previousValue: oldTeacher.status, newValue: updates.status });
+      }
+      if (updates.driveUrl !== undefined && updates.driveUrl !== oldTeacher.driveUrl) {
+        changes.push({
+          field: 'Google Drive Link',
+          previousValue: oldTeacher.driveUrl || 'None',
+          newValue: updates.driveUrl || 'Cleared',
+        });
       }
     }
 

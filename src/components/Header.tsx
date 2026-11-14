@@ -9,7 +9,7 @@ import {
   MENTOR_ALLOWED_CATEGORIES,
 } from '../utils/supervisionScope';
 import {
-  GraduationCap,
+  LayoutDashboard,
   ClipboardCheck,
   FileSpreadsheet,
   Users,
@@ -174,7 +174,7 @@ export const Header: React.FC<HeaderProps> = ({
     sublabel: string;
     icon: React.ComponentType<{ className?: string }>;
   }[] = [
-    { id: 'dashboard', label: 'Dashboard', sublabel: 'Overview', icon: GraduationCap },
+    { id: 'dashboard', label: 'Dashboard', sublabel: 'Overview', icon: LayoutDashboard },
     { id: 'observation', label: 'COT-PMES', sublabel: 'Observations', icon: ClipboardCheck },
     { id: 'lesson-plans', label: 'Lesson Plans', sublabel: 'DLL / DLP Check', icon: FileSpreadsheet },
     { id: 'fleeting', label: 'Classroom Observation', sublabel: 'Fleeting Visits', icon: Compass },
@@ -247,9 +247,11 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center justify-between h-14 sm:h-15 gap-1 xl:gap-2">
           {/* Mobile Brand Mark (Phone screens < md) */}
           <div className="flex md:hidden items-center gap-2 shrink-0 py-1">
-            <div className="w-8 h-8 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center font-extrabold shadow-sm border border-amber-300 shrink-0">
-              <GraduationCap className="w-4 h-4 text-stone-950" />
-            </div>
+            <img
+              src="./assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
+              alt="BNHS Logo"
+              className="w-8 h-8 rounded-full object-cover bg-white p-0.5 shadow-sm border border-amber-300 shrink-0"
+            />
             <div className="leading-tight">
               <div className="text-xs font-bold text-amber-200 tracking-tight">BNHS · OMES</div>
               <div className="text-[9px] text-amber-300/80 font-medium">DepEd Portal</div>
@@ -258,9 +260,11 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Desktop & Tablet Brand Wordmark */}
           <div className="hidden md:flex items-center gap-2 shrink-0 mr-1 lg:mr-2">
-            <div className="w-8 h-8 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center font-extrabold text-xs shadow-xs border border-amber-300 shrink-0">
-              <GraduationCap className="w-4 h-4 text-stone-950" />
-            </div>
+            <img
+              src="./assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
+              alt="BNHS Logo"
+              className="w-8 h-8 rounded-full object-cover bg-white p-0.5 shadow-xs border border-amber-300 shrink-0"
+            />
             <div className="leading-tight hidden xl:block">
               <div className="text-xs font-bold text-amber-200 tracking-tight whitespace-nowrap">BNHS · OMES</div>
               <div className="text-[9px] text-amber-300/75 font-medium whitespace-nowrap">DepEd Supervision</div>

@@ -6,6 +6,7 @@ import { DashboardOverviewCharts } from '../components/DashboardOverviewCharts';
 import { DashboardCalendarWidget } from '../components/DashboardCalendarWidget';
 import { AdminMeConsolidatedGraphs } from '../components/AdminMeConsolidatedGraphs';
 import { AuditLogsView } from './AuditLogsView';
+import { AssignedTeacherDriveTaskList } from '../components/AssignedTeacherDriveTaskList';
 import { getPmcfCategory, getFarCategory } from '../types';
 import {
   matchesRoleSupervisionScope,
@@ -48,6 +49,7 @@ import {
   BookOpen,
   BookMarked,
   Lock,
+  ExternalLink,
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -1166,6 +1168,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </div>
 
+      {/* Assigned Teachers Google Drive Link Task List (Supervisor & Mentor Pages) */}
+      {(isSupervisor || isMentor) && (
+        <AssignedTeacherDriveTaskList
+          teachersToList={scopedTeachers}
+          roleLabel={isMentor ? 'Mentor' : 'Instructional Supervisor'}
+          accent={isMentor ? 'teal' : 'maroon'}
+        />
+      )}
+
       {/* Supervisory / Mentee Roster & Recent Evaluations (Strictly Scoped) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Personnel / Assignment Scope */}
@@ -1244,15 +1255,27 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
               ) : (
                 scopedTeachers.map((t) => (
-                  <div key={t.id} className="py-2.5 flex items-center justify-between">
-                    <div>
-                      <div className="text-xs font-bold text-stone-800">{t.fullName}</div>
-                      <div className="text-[11px] text-stone-500">
+                  <div key={t.id} className="py-2.5 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="text-xs font-bold text-stone-800 truncate">{t.fullName}</div>
+                      <div className="text-[11px] text-stone-500 truncate">
                         {t.position} · {t.department} ·{' '}
                         <span className="font-semibold text-stone-700">{t.subject}</span>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex items-center gap-1.5 shrink-0">
+                      {t.driveUrl && (
+                        <a
+                          href={/^https?:\/\//i.test(t.driveUrl) ? t.driveUrl : `https://${t.driveUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] font-bold text-[#701628] bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2 py-0.5 rounded inline-flex items-center gap-1 transition-colors"
+                          title={`Open ${t.fullName}'s Google Drive file`}
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          <span>Drive</span>
+                        </a>
+                      )}
                       <span className="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                         {isMentor
                           ? `${scopedLessonPlans.filter((lp) => lp.teacherId === t.id).length} DLLs`

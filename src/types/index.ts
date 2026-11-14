@@ -33,6 +33,7 @@ export interface Teacher {
   status: 'Active' | 'On Leave' | 'Official Travel';
   observationsCompleted: number;
   lastObservationDate?: string;
+  driveUrl?: string; // Direct Google Drive folder or file link for Supervisor/Mentor access
 }
 
 export interface Supervisor {

@@ -7,9 +7,8 @@ import {
   Lock,
   ShieldCheck,
   UserCheck,
-  KeyRound,
   Check,
-  GraduationCap,
+  Users,
   BookOpenCheck,
   Key,
   Eye,
@@ -113,9 +112,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
         {/* Header */}
         <div className="bg-[#701628] px-5 sm:px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-amber-400/20 rounded-lg border border-amber-300/30 text-amber-300">
-              <KeyRound className="w-5 h-5" />
-            </div>
+            <img
+              src="./assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
+              alt="BNHS Logo"
+              className="w-9 h-9 rounded-full object-cover bg-white p-0.5 border border-amber-300 shrink-0 shadow-xs"
+            />
             <div>
               <h3 className="text-base font-bold tracking-tight">OMES Switch Account</h3>
               <p className="text-xs text-amber-200/80">Barobo National High School · Portal</p>
@@ -195,7 +196,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onOpenF
                 : 'text-stone-600 hover:text-stone-900'
             }`}
           >
-            <GraduationCap className="w-3.5 h-3.5 shrink-0" />
+            <Users className="w-3.5 h-3.5 shrink-0" />
             <span>Teacher</span>
           </button>
         </div>

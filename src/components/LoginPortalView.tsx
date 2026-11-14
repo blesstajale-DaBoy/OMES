@@ -6,14 +6,13 @@ import {
   Lock,
   ShieldCheck,
   UserCheck,
-  GraduationCap,
+  Users,
   BookOpenCheck,
   Eye,
   EyeOff,
   Key,
   Check,
   Shield,
-  GraduationCap as CapIcon,
   ArrowRight,
   AlertCircle,
   Cloud,
@@ -168,9 +167,11 @@ export const LoginPortalView: React.FC<LoginPortalViewProps> = ({ onOpenForgotPa
       <header className="w-full border-b border-amber-400/20 bg-black/25 backdrop-blur-xs px-4 sm:px-6 lg:px-10 py-3">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-amber-400 text-stone-950 flex items-center justify-center shadow-sm border border-amber-300 shrink-0">
-              <CapIcon className="w-5 h-5" />
-            </div>
+            <img
+              src="./assets/aistudio/BNHS_LOGO_29bb7e4c.jpg"
+              alt="Barobo National High School Logo"
+              className="w-10 h-10 rounded-full object-cover bg-white p-0.5 shadow-sm border border-amber-300 shrink-0"
+            />
             <div>
               <div className="text-xs sm:text-sm font-extrabold text-white tracking-wide">
                 {schoolProfile.schoolName.toUpperCase()} · OMES PORTAL
@@ -249,7 +250,7 @@ export const LoginPortalView: React.FC<LoginPortalViewProps> = ({ onOpenForgotPa
                   </div>
                   <div className="p-2.5 rounded-xl bg-white/8 border border-white/10">
                     <div className="font-bold text-sky-300 flex items-center gap-1.5">
-                      <GraduationCap className="w-3.5 h-3.5" />
+                      <Users className="w-3.5 h-3.5" />
                       <span>Teachers / Faculty ({teachers.length})</span>
                     </div>
                     <div className="text-[11px] text-amber-100/75 mt-0.5">
@@ -286,7 +287,7 @@ export const LoginPortalView: React.FC<LoginPortalViewProps> = ({ onOpenForgotPa
                   { id: 'admin', label: 'Administrator', Icon: UserCheck },
                   { id: 'supervisor', label: 'Supervisor', Icon: ShieldCheck },
                   { id: 'mentor', label: 'Mentor', Icon: BookOpenCheck },
-                  { id: 'teacher', label: 'Teacher', Icon: GraduationCap },
+                  { id: 'teacher', label: 'Teacher', Icon: Users },
                 ] as const
               ).map(({ id, label, Icon }) => {
                 const active = selectedRole === id;

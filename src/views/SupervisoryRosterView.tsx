@@ -21,7 +21,6 @@ import {
   Building2,
   BookOpen,
   BookMarked,
-  GraduationCap,
   Table,
   Printer,
   Download,
@@ -36,6 +35,8 @@ import {
   Sparkles,
   RotateCcw,
   Cloud,
+  ExternalLink,
+  Link2,
 } from 'lucide-react';
 
 // Helper component to highlight search matches in real-time
@@ -172,6 +173,25 @@ export const SupervisoryRosterView: React.FC = () => {
   const [teacherToDelete, setTeacherToDelete] = useState<Teacher | null>(null);
   const [supervisorToDelete, setSupervisorToDelete] = useState<Supervisor | null>(null);
   const [mentorToDelete, setMentorToDelete] = useState<Mentor | null>(null);
+
+  // Inline Google Drive Link Editor State for Supervisor & Mentor Assigned Teacher Task Lists
+  const [editingDriveKey, setEditingDriveKey] = useState<string | null>(null);
+  const [draftTeacherDriveUrl, setDraftTeacherDriveUrl] = useState<string>('');
+
+  const handleSaveInlineTeacherDriveUrl = (teacher: Teacher) => {
+    const raw = draftTeacherDriveUrl.trim();
+    const normalized = raw ? (/^https?:\/\//i.test(raw) ? raw : `https://${raw}`) : '';
+    updateTeacher(teacher.id, { driveUrl: normalized || undefined });
+    setEditingDriveKey(null);
+    setDraftTeacherDriveUrl('');
+    setToastMessage({
+      text: normalized
+        ? `Saved Google Drive link for ${teacher.fullName}.`
+        : `Cleared Google Drive link for ${teacher.fullName}.`,
+      type: 'success',
+    });
+    setTimeout(() => setToastMessage(null), 2600);
+  };
 
   // Smart Real-Time Matching Functions for Name, Position, Department, ID, Subject
   const matchesSearch = (textToMatch: string, query: string) => {
@@ -1338,7 +1358,7 @@ export const SupervisoryRosterView: React.FC = () => {
               : 'border-transparent text-stone-500 hover:text-stone-800'
           }`}
         >
-          <GraduationCap className="w-4 h-4" />
+          <Users className="w-4 h-4" />
           <span>Teaching Personnel Directory ({eligibleFacultyTeachers.length})</span>
         </button>
 
@@ -1707,7 +1727,7 @@ export const SupervisoryRosterView: React.FC = () => {
                             {p.roleType === 'Instructional Supervisor' ? (
                               <ShieldCheck className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
                             ) : (
-                              <GraduationCap className="w-3.5 h-3.5 text-[#701628] shrink-0" />
+                              <Users className="w-3.5 h-3.5 text-[#701628] shrink-0" />
                             )}
                             <HighlightMatch text={p.fullName} query={searchQuery} />
                           </div>
@@ -2756,30 +2776,99 @@ export const SupervisoryRosterView: React.FC = () => {
                           </button>
                         </div>
 
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
                           {assignedList.map((t) => {
                             const isMT = t.position.toLowerCase().includes('master teacher');
+                            const rowKey = `sup-${s.id}-${t.id}`;
+                            const isEditingDrive = editingDriveKey === rowKey;
+                            const hasDrive = Boolean(t.driveUrl && t.driveUrl.trim());
+                            const normalizedDrive = hasDrive
+                              ? /^https?:\/\//i.test(t.driveUrl || '')
+                                ? (t.driveUrl as string)
+                                : `https://${t.driveUrl}`
+                              : '';
                             return (
                               <div
                                 key={t.id}
-                                className="text-[11px] p-2 bg-stone-50 rounded-lg border border-stone-100 flex items-center justify-between gap-2"
+                                className="text-[11px] p-2 bg-stone-50 rounded-lg border border-stone-100 space-y-1.5"
                               >
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <span className="font-semibold text-stone-800">{t.fullName}</span>
-                                    {isMT && (
-                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                        Principal's Mentee
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-semibold text-stone-800">{t.fullName}</span>
+                                      {isMT && (
+                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                                          Principal&apos;s Mentee
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-stone-500 truncate">
+                                      {t.position} • {t.department}
+                                    </div>
+                                  </div>
+                                  <span className="font-mono text-emerald-700 font-bold shrink-0">
+                                    {t.observationsCompleted} COTs
+                                  </span>
+                                </div>
+
+                                {isEditingDrive ? (
+                                  <div className="flex items-center gap-1 pt-0.5">
+                                    <input
+                                      type="text"
+                                      value={draftTeacherDriveUrl}
+                                      onChange={(e) => setDraftTeacherDriveUrl(e.target.value)}
+                                      placeholder="Paste Google Drive link..."
+                                      className="flex-1 min-w-0 px-2 py-1 text-[10px] font-mono border border-stone-300 rounded bg-white text-stone-900 focus:outline-none focus:ring-1 focus:ring-[#701628]"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveInlineTeacherDriveUrl(t)}
+                                      className="px-2 py-1 bg-[#701628] text-white rounded text-[10px] font-bold cursor-pointer shrink-0"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingDriveKey(null);
+                                        setDraftTeacherDriveUrl('');
+                                      }}
+                                      className="px-1.5 py-1 border border-stone-300 text-stone-600 rounded text-[10px] cursor-pointer shrink-0"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                                    {hasDrive ? (
+                                      <a
+                                        href={normalizedDrive}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold text-[#701628] hover:underline truncate"
+                                        title={normalizedDrive}
+                                      >
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                        <span>Open Drive File</span>
+                                      </a>
+                                    ) : (
+                                      <span className="text-[10px] text-amber-700 font-medium">
+                                        Pending Google Drive link
                                       </span>
                                     )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingDriveKey(rowKey);
+                                        setDraftTeacherDriveUrl(t.driveUrl || '');
+                                      }}
+                                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-stone-600 hover:text-[#701628] cursor-pointer shrink-0"
+                                    >
+                                      <Link2 className="w-3 h-3" />
+                                      <span>{hasDrive ? 'Edit Link' : '+ Add Link'}</span>
+                                    </button>
                                   </div>
-                                  <div className="text-[10px] text-stone-500 truncate">
-                                    {t.position} • {t.department}
-                                  </div>
-                                </div>
-                                <span className="font-mono text-emerald-700 font-bold shrink-0">
-                                  {t.observationsCompleted} COTs
-                                </span>
+                                )}
                               </div>
                             );
                           })}
@@ -2914,28 +3003,99 @@ export const SupervisoryRosterView: React.FC = () => {
                           </button>
                         </div>
 
-                        <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                          {assignedList.map((t) => (
-                            <div
-                              key={t.id}
-                              className="text-[11px] p-2 bg-stone-50 rounded-lg border border-stone-100 flex items-center justify-between gap-2"
-                            >
-                              <div className="min-w-0">
-                                <div className="font-semibold text-stone-800 truncate">{t.fullName}</div>
-                                <div className="text-[10px] text-stone-500 truncate">
-                                  {t.position} · {t.subject || t.department}
-                                </div>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => assignTeacherToMentor(t.id, '')}
-                                className="text-[10px] text-rose-600 hover:underline shrink-0 cursor-pointer"
-                                title="Unassign mentee"
+                        <div className="space-y-1.5 max-h-64 overflow-y-auto pr-0.5">
+                          {assignedList.map((t) => {
+                            const rowKey = `mentor-${m.id}-${t.id}`;
+                            const isEditingDrive = editingDriveKey === rowKey;
+                            const hasDrive = Boolean(t.driveUrl && t.driveUrl.trim());
+                            const normalizedDrive = hasDrive
+                              ? /^https?:\/\//i.test(t.driveUrl || '')
+                                ? (t.driveUrl as string)
+                                : `https://${t.driveUrl}`
+                              : '';
+                            return (
+                              <div
+                                key={t.id}
+                                className="text-[11px] p-2 bg-stone-50 rounded-lg border border-stone-100 space-y-1.5"
                               >
-                                Unlink
-                              </button>
-                            </div>
-                          ))}
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="font-semibold text-stone-800 truncate">{t.fullName}</div>
+                                    <div className="text-[10px] text-stone-500 truncate">
+                                      {t.position} · {t.subject || t.department}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => assignTeacherToMentor(t.id, '')}
+                                    className="text-[10px] text-rose-600 hover:underline shrink-0 cursor-pointer"
+                                    title="Unassign mentee"
+                                  >
+                                    Unlink
+                                  </button>
+                                </div>
+
+                                {isEditingDrive ? (
+                                  <div className="flex items-center gap-1 pt-0.5">
+                                    <input
+                                      type="text"
+                                      value={draftTeacherDriveUrl}
+                                      onChange={(e) => setDraftTeacherDriveUrl(e.target.value)}
+                                      placeholder="Paste Google Drive link..."
+                                      className="flex-1 min-w-0 px-2 py-1 text-[10px] font-mono border border-stone-300 rounded bg-white text-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-700"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveInlineTeacherDriveUrl(t)}
+                                      className="px-2 py-1 bg-teal-700 text-white rounded text-[10px] font-bold cursor-pointer shrink-0"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingDriveKey(null);
+                                        setDraftTeacherDriveUrl('');
+                                      }}
+                                      className="px-1.5 py-1 border border-stone-300 text-stone-600 rounded text-[10px] cursor-pointer shrink-0"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                                    {hasDrive ? (
+                                      <a
+                                        href={normalizedDrive}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-800 hover:underline truncate"
+                                        title={normalizedDrive}
+                                      >
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                        <span>Open Drive File</span>
+                                      </a>
+                                    ) : (
+                                      <span className="text-[10px] text-amber-700 font-medium">
+                                        Pending Google Drive link
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingDriveKey(rowKey);
+                                        setDraftTeacherDriveUrl(t.driveUrl || '');
+                                      }}
+                                      className="inline-flex items-center gap-1 text-[10px] font-semibold text-stone-600 hover:text-teal-800 cursor-pointer shrink-0"
+                                    >
+                                      <Link2 className="w-3 h-3" />
+                                      <span>{hasDrive ? 'Edit Link' : '+ Add Link'}</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                           {assignedList.length === 0 && (
                             <div className="text-[11px] text-stone-400 italic">No mentees currently assigned.</div>
                           )}
