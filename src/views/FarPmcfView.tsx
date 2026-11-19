@@ -15,6 +15,10 @@ import {
 import { PrintFarReportModal } from '../components/PrintFarReportModal';
 import { PrintPmcfReportModal } from '../components/PrintPmcfReportModal';
 import {
+  SummativeMonitoringToolSection,
+  DEFAULT_SUMMATIVE_MONITORING_RATINGS,
+} from '../components/SummativeMonitoringToolSection';
+import {
   matchesRoleSupervisionScope,
   SupervisionScopeBanner,
   resolveRecordSupervisor,
@@ -308,6 +312,9 @@ export const FarPmcfView: React.FC = () => {
   const [summativeBloomCreate, setSummativeBloomCreate] = useState(3);
   const [summativeAnswerKeyVerified, setSummativeAnswerKeyVerified] = useState(true);
   const [summativeItemQualityRemarks, setSummativeItemQualityRemarks] = useState('');
+  const [summativeMonitoringRatings, setSummativeMonitoringRatings] = useState<Record<string, 'E' | 'NE'>>({
+    ...DEFAULT_SUMMATIVE_MONITORING_RATINGS,
+  });
   const [summativeGoogleDriveLink, setSummativeGoogleDriveLink] = useState('');
 
   const bloomTotalAllocated =
@@ -359,6 +366,7 @@ export const FarPmcfView: React.FC = () => {
     setSummativeBloomCreate(3);
     setSummativeAnswerKeyVerified(true);
     setSummativeItemQualityRemarks('');
+    setSummativeMonitoringRatings({ ...DEFAULT_SUMMATIVE_MONITORING_RATINGS });
     setSummativeGoogleDriveLink('');
     setIsSummativeModalOpen(true);
   };
@@ -398,6 +406,10 @@ export const FarPmcfView: React.FC = () => {
     setSummativeBloomCreate(record.bloomCreate ?? 3);
     setSummativeAnswerKeyVerified(record.answerKeyVerified ?? true);
     setSummativeItemQualityRemarks(record.itemQualityRemarks || '');
+    setSummativeMonitoringRatings({
+      ...DEFAULT_SUMMATIVE_MONITORING_RATINGS,
+      ...(record.monitoringRatings || {}),
+    });
     setSummativeGoogleDriveLink(record.googleDriveLink || '');
     setIsSummativeModalOpen(true);
   };
@@ -465,6 +477,7 @@ export const FarPmcfView: React.FC = () => {
         answerKeyVerified: summativeAnswerKeyVerified,
         tosAlignment: computedTosAlignmentText,
         itemQualityRemarks: summativeItemQualityRemarks,
+        monitoringRatings: { ...summativeMonitoringRatings },
         googleDriveLink: summativeGoogleDriveLink.trim(),
       });
     } else {
@@ -504,6 +517,7 @@ export const FarPmcfView: React.FC = () => {
         answerKeyVerified: summativeAnswerKeyVerified,
         tosAlignment: computedTosAlignmentText,
         itemQualityRemarks: summativeItemQualityRemarks,
+        monitoringRatings: { ...summativeMonitoringRatings },
         googleDriveLink: summativeGoogleDriveLink.trim(),
       });
     }
@@ -3167,8 +3181,8 @@ export const FarPmcfView: React.FC = () => {
 
       {/* Summative Assessment Modal */}
       {isSummativeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-2xl w-full overflow-hidden my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-3xl w-full overflow-hidden my-4 sm:my-6">
             <div className="px-6 py-4 bg-teal-800 text-white flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold">
@@ -3190,7 +3204,7 @@ export const FarPmcfView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveSummative} className="p-6 space-y-4 text-xs max-h-[80vh] overflow-y-auto">
+            <form onSubmit={handleSaveSummative} className="p-5 sm:p-6 space-y-4 text-xs max-h-[82vh] overflow-y-scroll">
               {/* Target Term Selector */}
               <div className="p-3.5 rounded-xl bg-teal-50/70 border border-teal-200 space-y-2">
                 <label className="block font-bold text-stone-800">
@@ -3601,6 +3615,17 @@ export const FarPmcfView: React.FC = () => {
                     </div>
                   </div>
                 </div>
+
+                {/* Monitoring Tool On The Conduct Of Summative Assessment */}
+                <SummativeMonitoringToolSection
+                  ratings={summativeMonitoringRatings}
+                  onChange={(itemId, status) =>
+                    setSummativeMonitoringRatings((prev) => ({
+                      ...prev,
+                      [itemId]: status,
+                    }))
+                  }
+                />
 
                 {/* Item Quality Remarks / Distracter Analysis */}
                 <div>

@@ -18,6 +18,7 @@ import {
   Supervisor,
 } from '../types';
 import { NavTab } from './Header';
+import { useData } from '../context/DataContext';
 import {
   CLASSROOM_TABLE_SECTIONS,
   FLEETING_TABLE_ROWS,
@@ -79,6 +80,7 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
   assessments,
   onNavigate,
 }) => {
+  const { summativeRecords } = useData();
   const [selectedTool, setSelectedTool] = useState<MonitoringToolKey | 'ALL'>('ALL');
   const [selectedTermFilter, setSelectedTermFilter] = useState<'ALL_TERMS' | MonitoringTermKey>(
     'ALL_TERMS'
@@ -380,6 +382,24 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
       }
 
       const termSpace = term.replace('Term', 'Term ');
+      const termSummatives = summativeRecords.filter((rec) => rec.term === termSpace);
+      if (termSummatives.length > 0) {
+        let liveE = 0;
+        let liveNE = 0;
+        termSummatives.forEach((rec) => {
+          const st = rec.monitoringRatings?.[rowId] || 'E';
+          if (st === 'E') liveE++;
+          else liveNE++;
+        });
+        const total = liveE + liveNE;
+        const scaledE = Math.round((liveE / Math.max(1, total)) * teachersCount);
+        return {
+          e: scaledE,
+          ne: Math.max(0, teachersCount - scaledE),
+          teachers: teachersCount,
+        };
+      }
+
       const termAssess = assessments.filter((a) => a.quarterTerm === termSpace);
       const targetAssess = termAssess.length > 0 ? termAssess : assessments;
       if (targetAssess.length > 0) {
@@ -498,10 +518,10 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
         const t2 = getTermDataForAssessment('Term2', row.id, idx);
         const t3 = getTermDataForAssessment('Term3', row.id, idx);
         return {
-          code: `Focus ${row.id}`,
-          shortLabel: `Focus ${row.id}`,
+          code: `Ind ${row.id}`,
+          shortLabel: `Ind ${row.id}`,
           fullIndicator: row.focus,
-          movOrFocus: `Indicators / MOV: ${row.indicator.replace(/\n+/g, ', ')}`,
+          movOrFocus: `${row.sectionTitle} • MOV's: ${row.indicator}`,
           term1E: t1.e,
           term1NE: t1.ne,
           term1Teachers: t1.teachers,
@@ -527,7 +547,7 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
       lessonPlan: lessonPlanMetrics,
       assessment: assessmentMetrics,
     };
-  }, [supervisorStore, supervisors, observations, fleetingObservations, lessonPlans, assessments, classroomIndicators]);
+  }, [supervisorStore, supervisors, observations, fleetingObservations, lessonPlans, assessments, summativeRecords, classroomIndicators]);
 
   // Compute Term-level average E% for each of the 4 tools
   const toolSummaryByTerm = useMemo(() => {
@@ -631,7 +651,7 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
     {
       key: 'assessment',
       title: 'M & E TOOL ON CHECKING ASSESSMENT',
-      subtitle: 'Consolidated Percentage (%) of 5 Assessment Checking Focus Indicators (A–E) by Term',
+      subtitle: 'Consolidated Percentage (%) of 18 Summative Assessment Monitoring Indicators (1.1–1.8 & 2.1–2.10) by Term',
       accentColor: '#0f766e',
       secondaryColor: '#14b8a6',
       borderClass: 'border-teal-200',
@@ -721,7 +741,7 @@ export const AdminMeConsolidatedGraphs: React.FC<AdminMeConsolidatedGraphsProps>
                   : 'bg-white text-stone-700 border border-stone-200 hover:bg-stone-100'
               }`}
             >
-              All 4 M &amp; E Tools ({33} Indicators)
+              All 4 M &amp; E Tools ({13 + 10 + 5 + ASSESSMENT_TABLE_ROWS.length} Indicators)
             </button>
             <button
               type="button"

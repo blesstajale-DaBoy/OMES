@@ -7,6 +7,7 @@ import {
 } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
+import { SUMMATIVE_MONITORING_SECTIONS } from './SummativeMonitoringToolSection';
 import {
   RefreshCw,
   Send,
@@ -250,38 +251,26 @@ export const LESSON_PLAN_TABLE_ROWS = [
   },
 ];
 
-export const ASSESSMENT_TABLE_ROWS = [
-  {
-    id: 'A',
-    focus:
-      'A. Maintains a documented schedule or system for the regular checking of teachers’ formative and summative assessments.',
-    indicator: 'School Memorandum, Assessment Checklist',
-  },
-  {
-    id: 'B',
-    focus:
-      'B. Inspects the adherence of assessment tools to the Table of Specifications (TOS) and Bloom’s Cognitive Distribution and ensures constructive alignment.',
-    indicator: 'TOS, Test Questionnaire\nAnswer Key',
-  },
-  {
-    id: 'C',
-    focus:
-      'C. Provides timely and constructive feedback, comments, and recommendations after assessment and MPS review.',
-    indicator: 'Annotated assessment tools, PMCF',
-  },
-  {
-    id: 'D',
-    focus:
-      'D. Conducts coaching, mentoring, or technical assistance based on assessment and item analysis findings.',
-    indicator: 'PMCF',
-  },
-  {
-    id: 'E',
-    focus:
-      'E. Monitors teachers’ compliance with the revisions, item analysis, and remediation plans provided during assessment review.',
-    indicator: 'Revised assessment tools, MPS Report, FAR',
-  },
-];
+export const ASSESSMENT_TABLE_SECTIONS = SUMMATIVE_MONITORING_SECTIONS.map((section) => ({
+  sectionTitle: section.sectionTitle,
+  items: section.items.map((item) => ({
+    id: item.id,
+    sectionTitle: section.sectionTitle,
+    numberLabel: item.numberLabel,
+    description: item.description,
+    indicator: `${item.numberLabel} ${item.description}`,
+    mov: item.movs.replace(/^MOV's:\s*/i, ''),
+  })),
+}));
+
+export const ASSESSMENT_TABLE_ROWS = ASSESSMENT_TABLE_SECTIONS.flatMap((section) =>
+  section.items.map((item) => ({
+    id: item.id,
+    sectionTitle: item.sectionTitle,
+    focus: item.indicator,
+    indicator: item.mov,
+  }))
+);
 
 const createSupervisorTermDefault = (
   supervisorName: string,
@@ -375,7 +364,14 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
   assessments,
 }) => {
   const { currentUser, isAdmin, isSupervisor, isMentor, isTeacher } = useAuth();
-  const { supervisors, mentors, schoolProfile, addNotification, logAuditEvent } = useData();
+  const {
+    supervisors,
+    mentors,
+    summativeRecords,
+    schoolProfile,
+    addNotification,
+    logAuditEvent,
+  } = useData();
 
   const [selectedTerm, setSelectedTerm] = useState<MonitoringTermKey>('Term1');
   const [activeToolFilter, setActiveToolFilter] = useState<'ALL' | MonitoringToolKey>('ALL');
@@ -1069,20 +1065,49 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
   };
 
   const handleSyncAssessmentFromRecords = () => {
-    const termAssessments = assessments.filter((a) => a.quarterTerm === termWithSpace);
-    const count = Math.max(
-      termAssessments.length,
-      activeSupervisorTermData.assessment.teacherCount || 4
+    const supSummatives = summativeRecords.filter(
+      (rec) =>
+        rec.term === termWithSpace &&
+        (rec.supervisorId === selectedSupervisorId ||
+          rec.supervisorName === activeSupervisor?.fullName ||
+          (activeMentorEntry &&
+            (rec.mentorId === activeMentorEntry.id ||
+              rec.mentorName === activeMentorEntry.fullName)))
     );
-    const metCount = termAssessments.filter((a) => a.targetMet).length;
-    const belowCount = termAssessments.length - metCount;
+    const termSummatives = summativeRecords.filter((rec) => rec.term === termWithSpace);
+    const targetSummatives = supSummatives.length > 0 ? supSummatives : termSummatives;
+
     const updatedRows: Record<string, IndicatorCount> = {};
-    ASSESSMENT_TABLE_ROWS.forEach((row) => {
-      updatedRows[row.id] = {
-        e: termAssessments.length > 0 ? String(metCount) : '',
-        ne: termAssessments.length > 0 ? String(belowCount) : '',
-      };
-    });
+    let count = activeSupervisorTermData.assessment.teacherCount || 4;
+
+    if (targetSummatives.length > 0) {
+      count = Math.max(targetSummatives.length, count);
+      ASSESSMENT_TABLE_ROWS.forEach((row) => {
+        let eCount = 0;
+        let neCount = 0;
+        targetSummatives.forEach((rec) => {
+          const status = rec.monitoringRatings?.[row.id] || 'E';
+          if (status === 'E') eCount++;
+          else neCount++;
+        });
+        updatedRows[row.id] = {
+          e: String(eCount),
+          ne: String(neCount),
+        };
+      });
+    } else {
+      const termAssessments = assessments.filter((a) => a.quarterTerm === termWithSpace);
+      count = Math.max(termAssessments.length, count);
+      const metCount = termAssessments.filter((a) => a.targetMet).length;
+      const belowCount = termAssessments.length - metCount;
+      ASSESSMENT_TABLE_ROWS.forEach((row) => {
+        updatedRows[row.id] = {
+          e: termAssessments.length > 0 ? String(metCount) : '',
+          ne: termAssessments.length > 0 ? String(belowCount) : '',
+        };
+      });
+    }
+
     setSupervisorStore((prev) => {
       const supTerm = prev[selectedSupervisorId]?.[selectedTerm] || activeSupervisorTermData;
       return {
@@ -1100,11 +1125,12 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
         },
       };
     });
-    triggerToast(`Synced Assessment Checking counts for ${activeSupervisor?.fullName}.`);
+    triggerToast(`Synced Summative Assessment monitoring counts for ${activeSupervisor?.fullName}.`);
   };
 
   const isConsolidated = viewMode === 'consolidated';
   let classroomRowRenderIndex = 0;
+  let assessmentRowRenderIndex = 0;
 
   const escapeHtml = (str: string) =>
     String(str || '')
@@ -1227,12 +1253,93 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
       </table>`;
     }
 
+    if (tool === 'assessment') {
+      const totalTeachers = isConsolidated
+        ? consolidatedTermData.assessment.teacherCount
+        : activeSupervisorTermData.assessment.teacherCount;
+      const notes = isConsolidated
+        ? consolidatedTermData.assessment.notesOrRemarks
+        : activeSupervisorTermData.assessment.notesOrRemarks;
+      const totalAssessmentBodyRows =
+        ASSESSMENT_TABLE_ROWS.length + ASSESSMENT_TABLE_SECTIONS.length;
+
+      let rowCounter = 0;
+      const bodyHtml = ASSESSMENT_TABLE_SECTIONS.map((sec) => {
+        const isFirstRow = rowCounter === 0;
+        rowCounter++;
+        const sectionHeaderRow = `<tr>
+          <td colspan="6" style="border:1px solid #1c1917;padding:6px 8px;text-align:left;font-weight:800;background:#fef3c7;color:#1c1917;">${escapeHtml(sec.sectionTitle)}</td>
+          ${
+            isFirstRow
+              ? `<td rowspan="${totalAssessmentBodyRows}" style="border:1px solid #1c1917;padding:8px;text-align:center;vertical-align:middle;font-weight:800;font-size:14px;">${totalTeachers}</td>
+                 <td rowspan="${totalAssessmentBodyRows}" style="border:1px solid #1c1917;padding:8px;vertical-align:top;white-space:pre-line;font-size:10px;line-height:1.4;">${escapeHtml(notes || 'No STAR evidence notes encoded.')}</td>`
+              : ''
+          }
+        </tr>`;
+
+        const itemRowsHtml = sec.items
+          .map((item) => {
+            rowCounter++;
+            let eDisplay = '';
+            let neDisplay = '';
+            if (isConsolidated) {
+              const consRow = consolidatedTermData.assessment.rows[item.id];
+              eDisplay = consRow?.hasValue ? String(consRow.e) : '';
+              neDisplay = consRow?.hasValue ? String(consRow.ne) : '';
+            } else {
+              const supRow = activeSupervisorTermData.assessment.rows[item.id] || {
+                e: '',
+                ne: '',
+              };
+              eDisplay = supRow.e;
+              neDisplay = supRow.ne;
+            }
+            const ePct = computePct(eDisplay, totalTeachers);
+            const nePct = computePct(neDisplay, totalTeachers);
+
+            return `<tr>
+              <td style="border:1px solid #1c1917;padding:6px 8px;vertical-align:middle;">${escapeHtml(item.indicator)}</td>
+              <td style="border:1px solid #1c1917;padding:6px 8px;vertical-align:middle;white-space:pre-line;">${escapeHtml(item.mov)}</td>
+              <td style="border:1px solid #1c1917;padding:6px 4px;text-align:center;font-weight:bold;">${escapeHtml(eDisplay)}</td>
+              <td style="border:1px solid #1c1917;padding:6px 4px;text-align:center;">${escapeHtml(ePct)}</td>
+              <td style="border:1px solid #1c1917;padding:6px 4px;text-align:center;font-weight:bold;">${escapeHtml(neDisplay)}</td>
+              <td style="border:1px solid #1c1917;padding:6px 4px;text-align:center;">${escapeHtml(nePct)}</td>
+            </tr>`;
+          })
+          .join('');
+
+        return sectionHeaderRow + itemRowsHtml;
+      }).join('');
+
+      return `<table style="width:100%;border-collapse:collapse;font-size:10.5px;color:#1c1917;">
+        <thead>
+          <tr>
+            <th colspan="8" style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#fff;">
+              MONITORING-TOOL-ON-CHECKING-ASSESSMENT${isConsolidated ? ' — CONSOLIDATED SCHOOL REPORT' : ''}
+            </th>
+          </tr>
+          <tr>
+            <th colspan="8" style="border:1px solid #1c1917;padding:6px;text-align:center;font-weight:bold;background:#f0fdfa;">
+              Monitoring Tool On The Conduct Of Summative Assessment (${escapeHtml(selectedTerm.replace('Term', 'Term '))})
+            </th>
+          </tr>
+          <tr>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:27%;">INDICATORS</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:21%;">MOV&apos;s</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:5%;">E</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:7%;">Percentage</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:5%;">NE</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:7%;">Percentage</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:center;font-weight:bold;background:#f5f5f4;width:9%;">Number of Teachers Assessed / Monitored</th>
+            <th style="border:1px solid #1c1917;padding:7px;text-align:left;font-weight:bold;background:#f5f5f4;width:19%;">Brief Evidence/Notes<br/><span style="font-weight:normal;font-size:9.5px;">(Use STAR (Situation, Task, Activity and Result in noting the observation)</span></th>
+          </tr>
+        </thead>
+        <tbody>${bodyHtml}</tbody>
+      </table>`;
+    }
+
     const rowsConfig =
-      tool === 'fleeting'
-        ? FLEETING_TABLE_ROWS
-        : tool === 'lessonPlan'
-          ? LESSON_PLAN_TABLE_ROWS
-          : ASSESSMENT_TABLE_ROWS;
+      tool === 'fleeting' ? FLEETING_TABLE_ROWS : LESSON_PLAN_TABLE_ROWS;
 
     const toolData = isConsolidated
       ? consolidatedTermData[tool]
@@ -1243,9 +1350,7 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
     const headerBannerTitle =
       tool === 'fleeting'
         ? `FLEETING/ WALKTHROUGH OBSERVATION TOOL ${selectedTerm.toUpperCase()}`
-        : tool === 'lessonPlan'
-          ? 'MONITORING-TOOL-ON-THE-CHECKING-THE-LESSON-PLAN'
-          : 'MONITORING-TOOL-ON-CHECKING-ASSESSMENT';
+        : 'MONITORING-TOOL-ON-THE-CHECKING-THE-LESSON-PLAN';
 
     const bodyHtml = rowsConfig
       .map((row, idx) => {
@@ -2552,11 +2657,19 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
                   </th>
                 </tr>
                 <tr>
-                  <th className="border border-stone-800 px-3 py-3 text-center font-bold uppercase bg-white w-80">
-                    FOCUS
+                  <th
+                    colSpan={8}
+                    className="border border-stone-800 px-3 py-1.5 text-center font-bold bg-teal-50/70 text-teal-950"
+                  >
+                    Monitoring Tool On The Conduct Of Summative Assessment ({selectedTerm.replace('Term', 'Term ')})
+                  </th>
+                </tr>
+                <tr>
+                  <th className="border border-stone-800 px-3 py-3 text-center font-bold uppercase bg-white w-96">
+                    INDICATORS
                   </th>
                   <th className="border border-stone-800 px-3 py-3 text-center font-bold uppercase bg-white w-56">
-                    INDICATORS
+                    MOV&apos;s
                   </th>
                   <th className="border border-stone-800 px-2 py-3 text-center font-bold bg-white w-16">
                     E
@@ -2570,8 +2683,8 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
                   <th className="border border-stone-800 px-2 py-3 text-center font-bold bg-white w-24">
                     Percentage
                   </th>
-                  <th className="border border-stone-800 px-2 py-3 text-center font-bold bg-white w-44">
-                    Number of Teachers being observed through fleeting/walkthrough
+                  <th className="border border-stone-800 px-2 py-3 text-center font-bold bg-white w-36">
+                    Number of Teachers Assessed / Monitored
                   </th>
                   <th className="border border-stone-800 px-3 py-3 text-left font-normal bg-white w-64">
                     Brief Evidence/Notes
@@ -2581,131 +2694,153 @@ export const MeMonitoringTablesSection: React.FC<MeMonitoringTablesSectionProps>
                 </tr>
               </thead>
               <tbody>
-                {ASSESSMENT_TABLE_ROWS.map((row, idx) => {
+                {ASSESSMENT_TABLE_SECTIONS.map((section) => {
+                  const totalAssessmentBodyRows =
+                    ASSESSMENT_TABLE_ROWS.length + ASSESSMENT_TABLE_SECTIONS.length;
                   const totalTeachers = isConsolidated
                     ? consolidatedTermData.assessment.teacherCount
                     : activeSupervisorTermData.assessment.teacherCount;
-
-                  let eDisplay = '';
-                  let neDisplay = '';
-
-                  if (isConsolidated) {
-                    const consRow = consolidatedTermData.assessment.rows[row.id];
-                    eDisplay = consRow?.hasValue ? String(consRow.e) : '';
-                    neDisplay = consRow?.hasValue ? String(consRow.ne) : '';
-                  } else {
-                    const supRow = activeSupervisorTermData.assessment.rows[row.id] || {
-                      e: '',
-                      ne: '',
-                    };
-                    eDisplay = supRow.e;
-                    neDisplay = supRow.ne;
-                  }
-
-                  const ePct = computePct(eDisplay, totalTeachers);
-                  const nePct = computePct(neDisplay, totalTeachers);
+                  const isFirstTableRow = assessmentRowRenderIndex === 0;
+                  assessmentRowRenderIndex++;
 
                   return (
-                    <tr key={row.id} className="hover:bg-teal-50/20">
-                      <td className="border border-stone-800 px-3 py-2.5 align-middle leading-snug">
-                        {row.focus}
-                      </td>
-                      <td className="border border-stone-800 px-3 py-2.5 align-middle whitespace-pre-line">
-                        {row.indicator}
-                      </td>
-                      <td className="border border-stone-800 p-1 text-center align-middle">
-                        {isConsolidated ? (
-                          <span className="font-bold text-stone-900">{eDisplay}</span>
-                        ) : (
-                          <input
-                            type="number"
-                            min={0}
-                            value={eDisplay}
-                            onChange={(e) =>
-                              updateSupervisorCell('assessment', row.id, 'e', e.target.value)
-                            }
-                            placeholder=""
-                            className="w-14 text-center py-1 rounded border border-stone-200 hover:border-stone-400 focus:border-teal-800 focus:bg-teal-50/40 focus:outline-none font-bold"
-                          />
-                        )}
-                      </td>
-                      <td className="border border-stone-800 px-2 py-2.5 text-center align-middle font-medium">
-                        {ePct}
-                      </td>
-                      <td className="border border-stone-800 p-1 text-center align-middle">
-                        {isConsolidated ? (
-                          <span className="font-bold text-stone-900">{neDisplay}</span>
-                        ) : (
-                          <input
-                            type="number"
-                            min={0}
-                            value={neDisplay}
-                            onChange={(e) =>
-                              updateSupervisorCell('assessment', row.id, 'ne', e.target.value)
-                            }
-                            placeholder=""
-                            className="w-14 text-center py-1 rounded border border-stone-200 hover:border-stone-400 focus:border-teal-800 focus:bg-teal-50/40 focus:outline-none font-bold"
-                          />
-                        )}
-                      </td>
-                      <td className="border border-stone-800 px-2 py-2.5 text-center align-middle font-medium">
-                        {nePct}
-                      </td>
-                      {idx === 0 && (
-                        <>
-                          <td
-                            rowSpan={ASSESSMENT_TABLE_ROWS.length}
-                            className="border border-stone-800 p-2 text-center align-middle bg-white"
-                          >
-                            {isConsolidated ? (
-                              <div className="space-y-1">
-                                <div className="text-base font-extrabold text-stone-900">
-                                  {totalTeachers}
+                    <React.Fragment key={section.sectionTitle}>
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="border border-stone-800 px-3 py-2 text-left font-extrabold bg-amber-50/90 text-stone-950"
+                        >
+                          {section.sectionTitle}
+                        </td>
+                        {isFirstTableRow && (
+                          <>
+                            <td
+                              rowSpan={totalAssessmentBodyRows}
+                              className="border border-stone-800 p-2 text-center align-middle bg-white"
+                            >
+                              {isConsolidated ? (
+                                <div className="space-y-1">
+                                  <div className="text-base font-extrabold text-stone-900">
+                                    {totalTeachers}
+                                  </div>
+                                  <div className="text-[10px] text-stone-500">Consolidated Total</div>
                                 </div>
-                                <div className="text-[10px] text-stone-500">Consolidated Total</div>
-                              </div>
-                            ) : (
-                              <input
-                                type="number"
-                                min={1}
-                                value={totalTeachers}
-                                onChange={(e) =>
-                                  updateSupervisorTeacherCount(
-                                    'assessment',
-                                    Number(e.target.value)
-                                  )
-                                }
-                                className="w-16 text-center font-bold text-sm py-1.5 rounded border border-stone-300 hover:border-stone-400 focus:border-teal-800 focus:outline-none"
-                              />
-                            )}
-                          </td>
-                          <td
-                            rowSpan={ASSESSMENT_TABLE_ROWS.length}
-                            className="border border-stone-800 p-2 align-top bg-white"
-                          >
-                            {isConsolidated ? (
-                              <div className="text-xs text-stone-800 whitespace-pre-line leading-relaxed min-h-[160px] p-1">
-                                {consolidatedTermData.assessment.notesOrRemarks || (
-                                  <span className="text-stone-400 italic">
-                                    Consolidated STAR observation notes from Instructional Supervisors will appear here once encoded.
-                                  </span>
-                                )}
-                              </div>
-                            ) : (
-                              <textarea
-                                rows={8}
-                                value={activeSupervisorTermData.assessment.notesOrRemarks}
-                                onChange={(e) =>
-                                  updateSupervisorNotes('assessment', e.target.value)
-                                }
-                                placeholder={`Enter STAR (Situation, Task, Activity, Result) observation notes for ${activeSupervisor?.fullName}...`}
-                                className="w-full h-full min-h-[160px] p-2 text-xs rounded border border-stone-200 hover:border-stone-300 focus:border-teal-800 focus:outline-none resize-none"
-                              />
-                            )}
-                          </td>
-                        </>
-                      )}
-                    </tr>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={1}
+                                  value={totalTeachers}
+                                  onChange={(e) =>
+                                    updateSupervisorTeacherCount(
+                                      'assessment',
+                                      Number(e.target.value)
+                                    )
+                                  }
+                                  className="w-16 text-center font-bold text-sm py-1.5 rounded border border-stone-300 hover:border-stone-400 focus:border-teal-800 focus:outline-none"
+                                />
+                              )}
+                            </td>
+                            <td
+                              rowSpan={totalAssessmentBodyRows}
+                              className="border border-stone-800 p-2 align-top bg-white"
+                            >
+                              {isConsolidated ? (
+                                <div className="text-xs text-stone-800 whitespace-pre-line leading-relaxed min-h-[320px] p-1">
+                                  {consolidatedTermData.assessment.notesOrRemarks || (
+                                    <span className="text-stone-400 italic">
+                                      Consolidated STAR observation notes from Instructional Supervisors will appear here once encoded.
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <textarea
+                                  rows={24}
+                                  value={activeSupervisorTermData.assessment.notesOrRemarks}
+                                  onChange={(e) =>
+                                    updateSupervisorNotes('assessment', e.target.value)
+                                  }
+                                  placeholder={`Enter STAR (Situation, Task, Activity, Result) observation notes for ${activeSupervisor?.fullName}...`}
+                                  className="w-full h-full min-h-[320px] p-2 text-xs rounded border border-stone-200 hover:border-stone-300 focus:border-teal-800 focus:outline-none resize-none"
+                                />
+                              )}
+                            </td>
+                          </>
+                        )}
+                      </tr>
+
+                      {section.items.map((row) => {
+                        assessmentRowRenderIndex++;
+
+                        let eDisplay = '';
+                        let neDisplay = '';
+
+                        if (isConsolidated) {
+                          const consRow = consolidatedTermData.assessment.rows[row.id];
+                          eDisplay = consRow?.hasValue ? String(consRow.e) : '';
+                          neDisplay = consRow?.hasValue ? String(consRow.ne) : '';
+                        } else {
+                          const supRow = activeSupervisorTermData.assessment.rows[row.id] || {
+                            e: '',
+                            ne: '',
+                          };
+                          eDisplay = supRow.e;
+                          neDisplay = supRow.ne;
+                        }
+
+                        const ePct = computePct(eDisplay, totalTeachers);
+                        const nePct = computePct(neDisplay, totalTeachers);
+
+                        return (
+                          <tr key={row.id} className="hover:bg-teal-50/20">
+                            <td className="border border-stone-800 px-3 py-2.5 align-middle leading-snug">
+                              <span className="font-bold text-stone-950 mr-1">{row.numberLabel}</span>
+                              {row.description}
+                            </td>
+                            <td className="border border-stone-800 px-3 py-2.5 align-middle whitespace-pre-line text-teal-950 font-medium">
+                              {row.mov}
+                            </td>
+                            <td className="border border-stone-800 p-1 text-center align-middle">
+                              {isConsolidated ? (
+                                <span className="font-bold text-stone-900">{eDisplay}</span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={eDisplay}
+                                  onChange={(e) =>
+                                    updateSupervisorCell('assessment', row.id, 'e', e.target.value)
+                                  }
+                                  placeholder=""
+                                  className="w-14 text-center py-1 rounded border border-stone-200 hover:border-stone-400 focus:border-teal-800 focus:bg-teal-50/40 focus:outline-none font-bold"
+                                />
+                              )}
+                            </td>
+                            <td className="border border-stone-800 px-2 py-2.5 text-center align-middle font-medium">
+                              {ePct}
+                            </td>
+                            <td className="border border-stone-800 p-1 text-center align-middle">
+                              {isConsolidated ? (
+                                <span className="font-bold text-stone-900">{neDisplay}</span>
+                              ) : (
+                                <input
+                                  type="number"
+                                  min={0}
+                                  value={neDisplay}
+                                  onChange={(e) =>
+                                    updateSupervisorCell('assessment', row.id, 'ne', e.target.value)
+                                  }
+                                  placeholder=""
+                                  className="w-14 text-center py-1 rounded border border-stone-200 hover:border-stone-400 focus:border-teal-800 focus:bg-teal-50/40 focus:outline-none font-bold"
+                                />
+                              )}
+                            </td>
+                            <td className="border border-stone-800 px-2 py-2.5 text-center align-middle font-medium">
+                              {nePct}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

@@ -365,6 +365,7 @@ export interface SummativeAssessmentRecord {
   answerKeyVerified?: boolean;
   tosAlignment?: string;
   itemQualityRemarks?: string;
+  monitoringRatings?: Record<string, 'E' | 'NE'>;
   googleDriveLink?: string;
   supervisorId?: string;
   supervisorName?: string;

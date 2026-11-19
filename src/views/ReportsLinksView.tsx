@@ -21,6 +21,10 @@ import {
 import { FLEETING_WALKTHROUGH_MONITORING_SECTIONS } from './FleetingObservationView';
 import { MeMonitoringTablesSection } from '../components/MeMonitoringTablesSection';
 import {
+  SummativeMonitoringToolSection,
+  DEFAULT_SUMMATIVE_MONITORING_RATINGS,
+} from '../components/SummativeMonitoringToolSection';
+import {
   FileSpreadsheet,
   Download,
   ExternalLink,
@@ -468,6 +472,9 @@ export const ReportsLinksView: React.FC = () => {
   const [summativeBloomCreate, setSummativeBloomCreate] = useState(3);
   const [summativeAnswerKeyVerified, setSummativeAnswerKeyVerified] = useState(true);
   const [summativeItemQualityRemarks, setSummativeItemQualityRemarks] = useState('');
+  const [summativeMonitoringRatings, setSummativeMonitoringRatings] = useState<Record<string, 'E' | 'NE'>>({
+    ...DEFAULT_SUMMATIVE_MONITORING_RATINGS,
+  });
   const [summativeGoogleDriveLink, setSummativeGoogleDriveLink] = useState('');
 
   // Record MPS Assessment State
@@ -517,6 +524,7 @@ export const ReportsLinksView: React.FC = () => {
     setSummativeTeacherId(defaultTeacher?.id || '');
     setSummativeSubject(defaultTeacher?.subject || defaultTeacher?.department || 'Mathematics');
     setSummativeGradeLevel(defaultTeacher?.gradeLevels?.[0] || 'Grade 10');
+    setSummativeMonitoringRatings({ ...DEFAULT_SUMMATIVE_MONITORING_RATINGS });
 
     setMpsTeacherName(defaultTeacher?.fullName || '');
     setIsCheckingAssessmentModalOpen(true);
@@ -632,6 +640,7 @@ export const ReportsLinksView: React.FC = () => {
       answerKeyVerified: summativeAnswerKeyVerified,
       tosAlignment: computedTosAlignmentText,
       itemQualityRemarks: summativeItemQualityRemarks,
+      monitoringRatings: { ...summativeMonitoringRatings },
       googleDriveLink: summativeGoogleDriveLink.trim(),
     });
 
@@ -639,6 +648,7 @@ export const ReportsLinksView: React.FC = () => {
     setSummativeCompetency('');
     setSummativeLeastMastered('');
     setSummativeItemQualityRemarks('');
+    setSummativeMonitoringRatings({ ...DEFAULT_SUMMATIVE_MONITORING_RATINGS });
     setSummativeGoogleDriveLink('');
     showToast(`Saved Summative Assessment (${summativeTerm}) record successfully.`);
   };
@@ -2142,8 +2152,8 @@ export const ReportsLinksView: React.FC = () => {
           (Formative Assessment, Summative Assessment & Record MPS Assessment Modal)
       ============================================================================ */}
       {isCheckingAssessmentModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-2xl w-full overflow-hidden my-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl border border-stone-200 shadow-2xl max-w-3xl w-full overflow-hidden my-4 sm:my-6">
             <div
               className={`px-6 py-4 text-white flex items-center justify-between ${
                 assessmentModalMode === 'summative'
@@ -2213,7 +2223,7 @@ export const ReportsLinksView: React.FC = () => {
             {assessmentModalMode === 'summative' && (
               <form
                 onSubmit={handleSaveSummative}
-                className="p-6 space-y-4 text-xs max-h-[76vh] overflow-y-auto"
+                className="p-5 sm:p-6 space-y-4 text-xs max-h-[78vh] overflow-y-scroll"
               >
                 <div className="p-3.5 rounded-xl bg-teal-50/70 border border-teal-200 space-y-2">
                   <label className="block font-bold text-stone-800">
@@ -2619,6 +2629,17 @@ export const ReportsLinksView: React.FC = () => {
                       </div>
                     </div>
                   </div>
+
+                  {/* Monitoring Tool On The Conduct Of Summative Assessment */}
+                  <SummativeMonitoringToolSection
+                    ratings={summativeMonitoringRatings}
+                    onChange={(itemId, status) =>
+                      setSummativeMonitoringRatings((prev) => ({
+                        ...prev,
+                        [itemId]: status,
+                      }))
+                    }
+                  />
 
                   <div>
                     <label className="block font-bold text-stone-700 mb-1">
