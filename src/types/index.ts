@@ -146,6 +146,7 @@ export interface FleetingObservation {
   supervisorId: string;
   supervisorName: string;
   date: string;
+  quarterTerm?: 'Term 1' | 'Term 2' | 'Term 3' | string;
   time: string;
   durationMinutes: number; // 5 to 15 mins
   gradeAndSection: string;
@@ -268,6 +269,7 @@ export interface InstructionalMaterialQA {
   evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
   gradeSubject: string;
   dateSubmitted: string;
+  quarterTerm?: 'Term 1' | 'Term 2' | 'Term 3' | string;
   fileUrl?: string; // Google Drive link or valid web link
   alignmentToMELC: boolean;
   contentAccuracyVerified: boolean;

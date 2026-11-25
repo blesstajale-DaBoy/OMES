@@ -14,6 +14,7 @@ import {
   resolveActiveMentorForUser,
   resolveActiveTeacherForUser,
   isMentorAllowedCategory,
+  SupervisionScopeBanner,
 } from '../utils/supervisionScope';
 import {
   ResponsiveContainer,
@@ -85,6 +86,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [adminSubTab, setAdminSubTab] = useState<'overview' | 'audit-logs'>('overview');
   const [monthlyChartMode, setMonthlyChartMode] = useState<'bar' | 'area'>('bar');
   const [monthlyDeptFilter, setMonthlyDeptFilter] = useState<'All' | 'JHS' | 'SHS'>('All');
+  const [dashboardSupervisorFilterId, setDashboardSupervisorFilterId] = useState<string>('All');
 
   const activeSupervisor = useMemo(
     () => resolveActiveSupervisorForUser(currentUser, teachers, supervisors),
@@ -518,6 +520,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </span>
         </div>
       )}
+
+      {/* Supervisor / Mentor / Admin Privacy Scope & By-Term Evaluation Tool Boxes */}
+      <SupervisionScopeBanner
+        selectedSupervisorFilterId={dashboardSupervisorFilterId}
+        onChangeSupervisorFilterId={setDashboardSupervisorFilterId}
+        currentUser={currentUser}
+        teachers={teachers}
+        supervisors={supervisors}
+        mentors={mentors}
+        moduleLabel="Evaluation Tools & Supervisory Outputs"
+      />
 
       {/* In-App Notification & Alert Feed */}
       {dashboardNotifications.length > 0 && (

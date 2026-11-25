@@ -283,49 +283,36 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Navigation Links: Visible on Tablet, Laptop, and Desktop */}
+          {/* Navigation Links: Visible on Tablet, Laptop, and Desktop with Horizontal Scrollbar */}
           <div
             ref={navScrollRef}
-            className="hidden md:flex flex-1 items-center justify-start lg:justify-center gap-1 sm:gap-1 lg:gap-1 xl:gap-1.5 2xl:gap-2 overflow-x-auto py-1 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            className="hidden md:block flex-1 min-w-0 overflow-x-auto bnhs-nav-scrollbar pt-1 pb-1.5 scroll-smooth"
           >
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => onTabChange(item.id)}
-                  title={`${item.label} (${item.sublabel})`}
-                  className={`group relative flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2 lg:px-2 xl:px-2.5 2xl:px-3 py-1.5 rounded-xl text-[11px] xl:text-xs font-semibold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
-                    isActive
-                      ? 'bg-amber-400 text-stone-950 font-bold shadow-md ring-2 ring-amber-300/70 scale-[1.01]'
-                      : 'text-amber-100 bg-black/20 hover:bg-black/35 hover:text-white border border-white/10 hover:border-amber-400/40 hover:shadow-xs'
-                  }`}
-                >
-                  <Icon
-                    className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${
-                      isActive ? 'text-stone-950' : 'text-amber-300'
+            <div className="flex items-center gap-1 sm:gap-1 lg:gap-1 xl:gap-1.5 2xl:gap-2 w-max mx-auto px-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onTabChange(item.id)}
+                    title={`${item.label} (${item.sublabel})`}
+                    className={`group relative flex items-center gap-1 sm:gap-1.5 px-2.5 xl:px-3 py-1.5 rounded-xl text-[11px] xl:text-xs font-semibold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-400 text-stone-950 font-bold shadow-md ring-2 ring-amber-300/70'
+                        : 'text-amber-100 bg-black/20 hover:bg-black/35 hover:text-white border border-white/10 hover:border-amber-400/40 hover:shadow-xs'
                     }`}
-                  />
-                  <span className="tracking-tight">
-                    {item.id === 'roster' ? (
-                      <>
-                        <span className="hidden 2xl:inline">Personnel & </span>Roster
-                      </>
-                    ) : item.id === 'reports' ? (
-                      <>
-                        Reports<span className="hidden xl:inline"> & Links</span>
-                      </>
-                    ) : (
-                      item.label
-                    )}
-                  </span>
-                  {isActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#701628] animate-pulse" />
-                  )}
-                </button>
-              );
-            })}
+                  >
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 transition-transform group-hover:scale-110 ${
+                        isActive ? 'text-stone-950' : 'text-amber-300'
+                      }`}
+                    />
+                    <span className="tracking-tight">{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Right Scroll Arrow (shows if content overflows on tablet/desktop) */}
@@ -752,6 +739,37 @@ export const Header: React.FC<HeaderProps> = ({
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
+          </div>
+        </div>
+
+        {/* Mobile Horizontal Scrollable Navigation Bar (< md screens) */}
+        <div className="md:hidden border-t border-amber-500/20 pt-1.5 pb-2">
+          <div className="overflow-x-auto bnhs-nav-scrollbar pb-1.5 scroll-smooth">
+            <div className="flex items-center gap-1.5 w-max px-0.5">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => onTabChange(item.id)}
+                    title={`${item.label} (${item.sublabel})`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-400 text-stone-950 font-bold shadow-sm'
+                        : 'text-amber-100 bg-black/25 hover:bg-black/40 border border-white/10'
+                    }`}
+                  >
+                    <Icon
+                      className={`w-3.5 h-3.5 shrink-0 ${
+                        isActive ? 'text-stone-950' : 'text-amber-300'
+                      }`}
+                    />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </div>
