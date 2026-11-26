@@ -101,6 +101,7 @@ export interface ClassroomObservation {
   status: 'Completed' | 'Pending Post-Conference' | 'Scheduled';
   acknowledgedByTeacher: boolean;
   teacherSignatureDate?: string;
+  starEvidenceNotes?: string;
 }
 
 export interface LessonPlanCheck {
@@ -136,6 +137,7 @@ export interface LessonPlanCheck {
   driveFileId?: string;
   uploadedFileDataUrl?: string;
   uploadedFileSize?: number;
+  starEvidenceNotes?: string;
 }
 
 export interface FleetingObservation {
@@ -158,6 +160,7 @@ export interface FleetingObservation {
   monitoringRatings?: Record<string, 'E' | 'NE'>;
   rapidCommendation: string;
   quickCoachingTip: string;
+  starEvidenceNotes?: string;
 }
 
 export type SupervisionCategory =
@@ -277,6 +280,7 @@ export interface InstructionalMaterialQA {
   visualClarity: boolean;
   status: 'Approved for Use' | 'For Revision' | 'Under Review';
   evaluatorNotes: string;
+  starEvidenceNotes?: string;
 }
 
 export interface AssessmentRecord {
@@ -330,6 +334,7 @@ export interface FormativeAssessmentRecord {
   mentorId?: string;
   mentorName?: string;
   evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
+  starEvidenceNotes?: string;
 }
 
 export type SummativeTerm = 'Term 1' | 'Term 2' | 'Term 3';
@@ -374,6 +379,7 @@ export interface SummativeAssessmentRecord {
   mentorId?: string;
   mentorName?: string;
   evaluatorRole?: 'admin' | 'supervisor' | 'mentor';
+  starEvidenceNotes?: string;
 }
 
 export interface ResourceLink {
@@ -469,3 +475,47 @@ export interface AppNotification {
   supervisorName?: string;
   statusBadge?: string;
 }
+
+export interface AiGeneratedPmcfPayload {
+  date: string;
+  critical_incidents_and_outputs: string;
+  action_plan_intervention: string;
+  expected_output: string;
+}
+
+export interface AiGeneratedFarPayload {
+  teacher: string;
+  findings: string;
+  analysis: string;
+  recommendations: string;
+}
+
+export interface AiPmcfFarDraftSession {
+  sourceRecordId: string;
+  sourceCode: string;
+  evaluationType: string;
+  category: SupervisionCategory;
+  coachingMechanism: PMCFRecord['coachingMechanism'];
+  teacherId: string;
+  teacherName: string;
+  careerStage: string;
+  subjectGrade: string;
+  supervisorId: string;
+  supervisorName: string;
+  mentorId?: string;
+  mentorName?: string;
+  evaluatorRole: 'admin' | 'supervisor' | 'mentor';
+  date: string;
+  term: string;
+  weekLabel: string;
+  indicatorScoresList: string;
+  observerNotes: string;
+  resolved?: boolean;
+  loading: boolean;
+  error?: string | null;
+  generated?: {
+    pmcf: AiGeneratedPmcfPayload;
+    far: AiGeneratedFarPayload;
+  } | null;
+}
+

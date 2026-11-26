@@ -23,6 +23,7 @@ import {
   SupervisionTerm,
 } from '../utils/supervisionScope';
 import { printTableReportToPdf } from '../utils/printTablePdf';
+import { StarEvidenceNotesField } from '../components/StarEvidenceNotesField';
 import {
   Plus,
   Search,
@@ -80,6 +81,7 @@ export const ImsAssessmentsView: React.FC = () => {
   const [imGradeSubject, setImGradeSubject] = useState('Science 9');
   const [imQuarterTerm, setImQuarterTerm] = useState<SupervisionTerm>('Term 1');
   const [imFileUrl, setImFileUrl] = useState('');
+  const [imStarEvidenceNotes, setImStarEvidenceNotes] = useState('');
 
   // New LM Form State
   const [lmTitle, setLmTitle] = useState('');
@@ -88,6 +90,7 @@ export const ImsAssessmentsView: React.FC = () => {
   const [lmGradeSubject, setLmGradeSubject] = useState('Mathematics 10');
   const [lmQuarterTerm, setLmQuarterTerm] = useState<SupervisionTerm>('Term 1');
   const [lmFileUrl, setLmFileUrl] = useState('');
+  const [lmStarEvidenceNotes, setLmStarEvidenceNotes] = useState('');
 
   // Edit IM / LM Form State
   const [editImTitle, setEditImTitle] = useState('');
@@ -99,6 +102,7 @@ export const ImsAssessmentsView: React.FC = () => {
   const [editImFileUrl, setEditImFileUrl] = useState('');
   const [editImStatus, setEditImStatus] = useState<InstructionalMaterialQA['status']>('Approved for Use');
   const [editImEvaluatorNotes, setEditImEvaluatorNotes] = useState('');
+  const [editImStarEvidenceNotes, setEditImStarEvidenceNotes] = useState('');
   const [editImMelc, setEditImMelc] = useState(true);
   const [editImAccuracy, setEditImAccuracy] = useState(true);
   const [editImCopyright, setEditImCopyright] = useState(true);
@@ -223,6 +227,7 @@ export const ImsAssessmentsView: React.FC = () => {
     setImQuarterTerm(
       defaultTerm || (selectedImTermFilter !== 'ALL' ? selectedImTermFilter : 'Term 1')
     );
+    setImStarEvidenceNotes('');
     setIsIMModalOpen(true);
   };
 
@@ -231,6 +236,7 @@ export const ImsAssessmentsView: React.FC = () => {
     setLmQuarterTerm(
       defaultTerm || (selectedImTermFilter !== 'ALL' ? selectedImTermFilter : 'Term 1')
     );
+    setLmStarEvidenceNotes('');
     setIsLMModalOpen(true);
   };
 
@@ -251,6 +257,7 @@ export const ImsAssessmentsView: React.FC = () => {
     setEditImFileUrl(im.fileUrl || '');
     setEditImStatus(im.status);
     setEditImEvaluatorNotes(im.evaluatorNotes);
+    setEditImStarEvidenceNotes(im.starEvidenceNotes || '');
     setEditImMelc(im.alignmentToMELC);
     setEditImAccuracy(im.contentAccuracyVerified);
     setEditImCopyright(im.copyrightCompliant);
@@ -304,6 +311,7 @@ export const ImsAssessmentsView: React.FC = () => {
       fileUrl: editImFileUrl.trim(),
       status: editImStatus,
       evaluatorNotes: editImEvaluatorNotes,
+      starEvidenceNotes: editImStarEvidenceNotes.trim(),
       alignmentToMELC: editImMelc,
       contentAccuracyVerified: editImAccuracy,
       copyrightCompliant: editImCopyright,
@@ -356,6 +364,7 @@ export const ImsAssessmentsView: React.FC = () => {
         : isTeacher
         ? 'Submitted by teacher for QA evaluation.'
         : 'Reviewed by instructional supervisor. Suitable for classroom deployment.',
+      starEvidenceNotes: imStarEvidenceNotes.trim(),
     });
     if (selectedImTermFilter !== 'ALL' && selectedImTermFilter !== imQuarterTerm) {
       setSelectedImTermFilter(imQuarterTerm);
@@ -363,6 +372,7 @@ export const ImsAssessmentsView: React.FC = () => {
     setIsIMModalOpen(false);
     setImTitle('');
     setImFileUrl('');
+    setImStarEvidenceNotes('');
   };
 
   const handleSaveLM = (e: React.FormEvent) => {
@@ -406,6 +416,7 @@ export const ImsAssessmentsView: React.FC = () => {
         : isTeacher
         ? 'Submitted by teacher for QA evaluation.'
         : 'Reviewed by instructional supervisor. Suitable for learner independent study and review.',
+      starEvidenceNotes: lmStarEvidenceNotes.trim(),
     });
     if (selectedImTermFilter !== 'ALL' && selectedImTermFilter !== lmQuarterTerm) {
       setSelectedImTermFilter(lmQuarterTerm);
@@ -413,6 +424,7 @@ export const ImsAssessmentsView: React.FC = () => {
     setIsLMModalOpen(false);
     setLmTitle('');
     setLmFileUrl('');
+    setLmStarEvidenceNotes('');
   };
 
   const handleOpenAddPmcf = () => {
@@ -603,6 +615,7 @@ export const ImsAssessmentsView: React.FC = () => {
         'Grade & Subject',
         'QA Criteria',
         'Status',
+        'Brief Evidence/Notes (STAR)',
         'Date Submitted',
       ],
       rows: rowsToPrint.map((im) => {
@@ -625,6 +638,7 @@ export const ImsAssessmentsView: React.FC = () => {
             im.contentAccuracyVerified ? 'Accurate' : 'Accuracy Pending'
           } · ${im.copyrightCompliant ? 'Copyright OK' : 'Needs Citation'}`,
           im.status,
+          im.starEvidenceNotes || '—',
           im.dateSubmitted,
         ];
       }),
@@ -866,6 +880,12 @@ export const ImsAssessmentsView: React.FC = () => {
                             <th className="py-3 px-4">Grade &amp; Subject</th>
                             <th className="py-3 px-4">QA Checklist</th>
                             <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4 min-w-[210px]">
+                              <div>Brief Evidence/Notes</div>
+                              <div className="text-[9px] font-medium normal-case text-stone-400">
+                                (Use STAR: Situation, Task, Activity &amp; Result)
+                              </div>
+                            </th>
                             <th className="py-3 px-4">Submitted</th>
                             <th className="py-3 px-4 text-right">Actions</th>
                           </tr>
@@ -873,7 +893,7 @@ export const ImsAssessmentsView: React.FC = () => {
                         <tbody className="divide-y divide-stone-100">
                           {termIMs.length === 0 ? (
                             <tr>
-                              <td colSpan={8} className="py-8 text-center text-stone-500">
+                              <td colSpan={9} className="py-8 text-center text-stone-500">
                                 No instructional or learner materials submitted for {section.term} yet. Click &ldquo;Submit IM ({section.term})&rdquo; or &ldquo;Submit LM ({section.term})&rdquo; to add one.
                               </td>
                             </tr>
@@ -988,6 +1008,15 @@ export const ImsAssessmentsView: React.FC = () => {
                                     >
                                       {im.status}
                                     </span>
+                                  </td>
+                                  <td className="py-3 px-4 max-w-xs text-[11px] text-stone-700">
+                                    {im.starEvidenceNotes ? (
+                                      <p className="whitespace-pre-line leading-relaxed">
+                                        {im.starEvidenceNotes}
+                                      </p>
+                                    ) : (
+                                      <span className="text-stone-400 italic">—</span>
+                                    )}
                                   </td>
                                   <td className="py-3 px-4 text-stone-500 font-mono text-[11px]">
                                     {im.dateSubmitted}
@@ -1661,6 +1690,11 @@ export const ImsAssessmentsView: React.FC = () => {
                 />
               </div>
 
+              <StarEvidenceNotesField
+                value={editImStarEvidenceNotes}
+                onChange={setEditImStarEvidenceNotes}
+              />
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button
                   type="button"
@@ -1784,6 +1818,11 @@ export const ImsAssessmentsView: React.FC = () => {
                 </p>
               </div>
 
+              <StarEvidenceNotesField
+                value={imStarEvidenceNotes}
+                onChange={setImStarEvidenceNotes}
+              />
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button
                   type="button"
@@ -1906,6 +1945,11 @@ export const ImsAssessmentsView: React.FC = () => {
                   * Note: Ensure the linked file is shared with viewing permissions (e.g. <em>"Anyone with the link can view"</em>).
                 </p>
               </div>
+
+              <StarEvidenceNotesField
+                value={lmStarEvidenceNotes}
+                onChange={setLmStarEvidenceNotes}
+              />
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button

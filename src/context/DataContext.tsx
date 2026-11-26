@@ -20,6 +20,9 @@ import {
   AuditLog,
   AppNotification,
   SupervisionCategory,
+  AiGeneratedPmcfPayload,
+  AiGeneratedFarPayload,
+  AiPmcfFarDraftSession,
 } from '../types';
 import {
   INITIAL_SCHOOL_PROFILE,
@@ -144,6 +147,15 @@ interface DataContextType {
   cloudSyncStatus: 'synced' | 'syncing' | 'offline' | 'error';
   lastCloudSyncTime: string | null;
   syncToCloudNow: () => Promise<boolean>;
+
+  activeAiDraft: AiPmcfFarDraftSession | null;
+  dismissAiDraft: () => void;
+  regenerateAiDraft: () => Promise<void>;
+  saveReviewedAiPmcfFar: (
+    editedPmcf: AiGeneratedPmcfPayload,
+    editedFar: AiGeneratedFarPayload,
+    pmcfStatus?: PMCFRecord['status']
+  ) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -292,6 +304,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     loadFromStorage('notifications', INITIAL_NOTIFICATIONS)
   );
+  const [activeAiDraft, setActiveAiDraft] = useState<AiPmcfFarDraftSession | null>(null);
+  const activeAiRequestIdRef = useRef<number>(0);
 
   // Sync to local storage
   useEffect(() => {
@@ -1120,25 +1134,46 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       statusBadge: obs.status || 'Scheduled',
     });
 
-    // Auto-generate PMCF & FAR reports for this observation
-    autoGeneratePmcfAndFar({
+    // Automatically invoke Gemini Structured Outputs for PMCF & 4-Column FAR review
+    const ratingSummaryLines =
+      obs.ratings && obs.ratings.length > 0
+        ? obs.ratings.map((r) => {
+            const val = r.evidentStatus
+              ? r.evidentStatus === 'E'
+                ? 'Evident (E)'
+                : 'Not Evident (NE)'
+              : `Score ${r.score}/7`;
+            return `- ${r.title}: ${val}${r.comments ? ` | Note: ${r.comments}` : ''}`;
+          })
+        : [];
+    ratingSummaryLines.push(`- Overall Rating: ${obs.overallRating} (Average Score: ${avgScore})`);
+
+    const obsNotesParts = [
+      obs.topicTitle ? `Lesson Topic: ${obs.topicTitle}` : '',
+      obs.generalObservations ? `General Observations: ${obs.generalObservations}` : '',
+      obs.strengths ? `Strengths / Commendations: ${obs.strengths}` : '',
+      obs.areasForDevelopment ? `Areas for Development: ${obs.areasForDevelopment}` : '',
+      obs.preConferenceNotes ? `Pre-Conference Notes: ${obs.preConferenceNotes}` : '',
+      obs.postConferenceNotes ? `Post-Conference Notes: ${obs.postConferenceNotes}` : '',
+      obs.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${obs.starEvidenceNotes}` : '',
+    ].filter(Boolean);
+
+    startAiPmcfFarGeneration({
       sourceRecordId: newObs.id,
       sourceCode: observationNo,
+      evaluationType: obs.evaluationType === 'classroom' ? 'Classroom Observation' : 'COT-PMES',
       category: obs.evaluationType === 'classroom' ? 'classroom' : 'cot-pmes',
       coachingMechanism: obs.evaluationType === 'classroom' ? 'Classroom Observation' : 'COT-PMES',
       teacherId: obs.teacherId,
       teacherName: obs.teacherName,
+      subjectGrade: `${obs.subjectTaught} (${obs.gradeAndSection})`,
       supervisorId: obs.supervisorId,
       supervisorName: obs.supervisorName,
       date: obs.date,
       term: obs.quarterTerm || schoolProfile.currentTerm || 'Term 1',
       weekLabel: `${obs.quarterTerm || 'Term 1'} · ${observationNo}`,
-      criticalIncident: `${obs.evaluationType === 'classroom' ? 'Classroom Observation' : 'COT-PMES'} (${observationNo}) in ${obs.subjectTaught} (${obs.gradeAndSection}) — Topic: ${obs.topicTitle || 'Classroom Lesson'}. Overall Rating: ${obs.overallRating} (${avgScore}).`,
-      actionPlan: obs.postConferenceNotes || obs.areasForDevelopment || 'Conducted post-observation mentoring conference and sustained instructional best practices.',
-      impact: obs.strengths || 'Documented instructional strengths and targeted learner engagement follow-through.',
-      findings: `${obs.evaluationType === 'classroom' ? 'Classroom Observation' : 'COT-PMES'} (${observationNo}) conducted for ${obs.subjectTaught} (${obs.gradeAndSection}): ${obs.generalObservations || obs.strengths || 'Completed DepEd classroom monitoring.'}`,
-      analysis: `Observed score averaged ${avgScore} (${obs.overallRating}). Strengths: ${obs.strengths || 'Strong classroom engagement.'}`,
-      recommendations: obs.areasForDevelopment || obs.postConferenceNotes || 'Continue differentiated instruction and DepEd MELC alignment.',
+      indicatorScoresList: ratingSummaryLines.join('\n'),
+      observerNotes: obsNotesParts.join('\n'),
       resolved: obs.status === 'Completed',
       explicitRole: 'supervisor',
     });
@@ -1221,14 +1256,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  // Centralized Auto-Generator for PMCF & FAR Reports upon Supervisor/Mentor Evaluations
-  const autoGeneratePmcfAndFar = (params: {
+  // Centralized Persistence Helper for PMCF & FAR Reports
+  const persistPmcfAndFar = (params: {
     sourceRecordId: string;
     sourceCode: string;
     category: SupervisionCategory;
     coachingMechanism: PMCFRecord['coachingMechanism'];
     teacherId?: string;
     teacherName: string;
+    farTeacherDisplay?: string;
     supervisorId?: string;
     supervisorName?: string;
     mentorId?: string;
@@ -1243,6 +1279,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     findings: string;
     analysis: string;
     recommendations: string;
+    pmcfStatusOverride?: PMCFRecord['status'];
     resolved?: boolean;
   }) => {
     const actor = getActor();
@@ -1274,12 +1311,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setPmcfRecords((prev) => {
       const existingIndex = prev.findIndex((r) => r.sourceRecordId === params.sourceRecordId);
-      const pmcfStatus: PMCFRecord['status'] = params.resolved ? 'Resolved' : 'In Progress';
+      const pmcfStatus: PMCFRecord['status'] =
+        params.pmcfStatusOverride || (params.resolved ? 'Resolved' : 'In Progress');
       if (existingIndex >= 0) {
         return prev.map((r, idx) =>
           idx === existingIndex
             ? {
                 ...r,
+                date: reportDate,
                 criticalIncidentDescription: params.criticalIncident,
                 actionPlanOutput: params.actionPlan,
                 impactOnJobPerformance: params.impact,
@@ -1318,17 +1357,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setFarRecords((prev) => {
       const existingIndex = prev.findIndex((r) => r.sourceRecordId === params.sourceRecordId);
-      const farStatus: FarRecord['status'] = params.resolved ? 'Verified' : 'In Progress';
+      const farResolved =
+        params.pmcfStatusOverride === 'Resolved' || Boolean(params.resolved);
+      const farStatus: FarRecord['status'] = farResolved ? 'Verified' : 'In Progress';
+      const farTeacherName = params.farTeacherDisplay?.trim() || params.teacherName;
       if (existingIndex >= 0) {
         return prev.map((r, idx) =>
           idx === existingIndex
             ? {
                 ...r,
+                date: reportDate,
+                teacherName: farTeacherName,
                 findings: params.findings,
                 analysis: params.analysis,
                 recommendations: params.recommendations,
                 status: farStatus,
-                actionTaken: Boolean(params.resolved),
+                actionTaken: farResolved,
                 evaluatorRole,
                 mentorId: resolvedMentorId || r.mentorId,
                 mentorName: resolvedMentorName || r.mentorName,
@@ -1343,7 +1387,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         category: params.category,
         date: reportDate,
         teacherId: resolvedTeacherId,
-        teacherName: params.teacherName,
+        teacherName: farTeacherName,
         supervisorId: resolvedSupId,
         supervisorName: resolvedSupName || actor.name,
         mentorId: resolvedMentorId || undefined,
@@ -1357,7 +1401,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         analysis: params.analysis,
         recommendations: params.recommendations,
         status: farStatus,
-        actionTaken: Boolean(params.resolved),
+        actionTaken: farResolved,
       };
       return [newFar, ...prev];
     });
@@ -1380,13 +1424,223 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         category: params.category,
         evaluatorRole,
         title: `PMCF & FAR Generated (${params.sourceCode})`,
-        message: `${evaluatorRole === 'mentor' ? `Mentor ${resolvedMentorName || actor.name}` : `Instructional Supervisor ${resolvedSupName || actor.name}`} evaluated your ${params.coachingMechanism} (${params.sourceCode}) and generated private PMCF & FAR reports in your account.`,
+        message: `${evaluatorRole === 'mentor' ? `Mentor ${resolvedMentorName || actor.name}` : `Instructional Supervisor ${resolvedSupName || actor.name}`} evaluated your ${params.coachingMechanism} (${params.sourceCode}) and published PMCF & FAR reports in your account.`,
         targetTab: 'far-pmcf',
         referenceCode: params.sourceCode,
         supervisorName: evaluatorRole === 'mentor' ? resolvedMentorName || actor.name : resolvedSupName || actor.name,
-        statusBadge: params.resolved ? 'Verified' : 'In Progress',
+        statusBadge: params.pmcfStatusOverride === 'Resolved' || params.resolved ? 'Verified' : 'In Progress',
       });
     }
+  };
+
+  // Call backend POST /api/generate-pmcf-far (Gemini Structured Outputs)
+  const fetchGeminiPmcfAndFar = async (draft: AiPmcfFarDraftSession) => {
+    const requestId = ++activeAiRequestIdRef.current;
+    try {
+      const response = await fetch('/api/generate-pmcf-far', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          evaluationType: draft.evaluationType,
+          date: draft.date,
+          teacherName: draft.teacherName,
+          careerStage: draft.careerStage,
+          subjectGrade: draft.subjectGrade,
+          indicatorScoresList: draft.indicatorScoresList,
+          observerNotes: draft.observerNotes,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (activeAiRequestIdRef.current !== requestId) return;
+
+      if (!response.ok) {
+        const errMsg =
+          typeof payload?.error === 'string' && payload.error.trim()
+            ? payload.error
+            : `Gemini API request failed with status ${response.status}.`;
+        setActiveAiDraft((prev) =>
+          prev && prev.sourceRecordId === draft.sourceRecordId
+            ? { ...prev, loading: false, error: errMsg, generated: null }
+            : prev
+        );
+        return;
+      }
+
+      if (!payload?.pmcf || !payload?.far) {
+        setActiveAiDraft((prev) =>
+          prev && prev.sourceRecordId === draft.sourceRecordId
+            ? {
+                ...prev,
+                loading: false,
+                error: 'Server returned an incomplete PMCF/FAR JSON structure.',
+                generated: null,
+              }
+            : prev
+        );
+        return;
+      }
+
+      setActiveAiDraft((prev) =>
+        prev && prev.sourceRecordId === draft.sourceRecordId
+          ? {
+              ...prev,
+              loading: false,
+              error: null,
+              generated: {
+                pmcf: payload.pmcf,
+                far: payload.far,
+              },
+            }
+          : prev
+      );
+    } catch (err) {
+      if (activeAiRequestIdRef.current !== requestId) return;
+      const errMsg =
+        err instanceof Error
+          ? `Could not connect to the Gemini generation endpoint: ${err.message}`
+          : 'Network error while generating PMCF and FAR.';
+      setActiveAiDraft((prev) =>
+        prev && prev.sourceRecordId === draft.sourceRecordId
+          ? { ...prev, loading: false, error: errMsg, generated: null }
+          : prev
+      );
+    }
+  };
+
+  const startAiPmcfFarGeneration = (params: {
+    sourceRecordId: string;
+    sourceCode: string;
+    evaluationType: string;
+    category: SupervisionCategory;
+    coachingMechanism: PMCFRecord['coachingMechanism'];
+    teacherId?: string;
+    teacherName: string;
+    subjectGrade: string;
+    supervisorId?: string;
+    supervisorName?: string;
+    mentorId?: string;
+    mentorName?: string;
+    explicitRole?: 'admin' | 'supervisor' | 'mentor';
+    date?: string;
+    term?: string;
+    weekLabel: string;
+    indicatorScoresList: string;
+    observerNotes: string;
+    resolved?: boolean;
+  }) => {
+    const actor = getActor();
+    if (actor.role === 'teacher') {
+      return;
+    }
+
+    const matchedTeacher = teachers.find(
+      (t) =>
+        (params.teacherId && t.id === params.teacherId) ||
+        t.fullName.trim().toLowerCase() === params.teacherName.trim().toLowerCase()
+    );
+    const resolvedTeacherId = params.teacherId || matchedTeacher?.id || '';
+    const resolvedSupId = params.supervisorId || matchedTeacher?.assignedSupervisorId || '';
+    const matchedSup = supervisors.find((s) => s.id === resolvedSupId);
+    const resolvedSupName = params.supervisorName || matchedSup?.fullName || actor.name;
+
+    const evaluatorRole: 'admin' | 'supervisor' | 'mentor' =
+      params.explicitRole ||
+      (actor.role === 'mentor' ? 'mentor' : actor.role === 'supervisor' ? 'supervisor' : 'admin');
+
+    const resolvedMentorId =
+      params.mentorId ||
+      (evaluatorRole === 'mentor' ? actor.mentorId || actor.id : matchedTeacher?.assignedMentorId || '');
+    const matchedMentor = mentors.find((m) => m.id === resolvedMentorId);
+    const resolvedMentorName =
+      params.mentorName ||
+      (evaluatorRole === 'mentor' ? actor.name : matchedMentor?.fullName || '');
+
+    const posLower = (matchedTeacher?.position || '').toLowerCase();
+    const careerStage =
+      posLower.includes('master teacher') || posLower.includes('head teacher') || posLower.includes('principal')
+        ? `Highly Proficient (${matchedTeacher?.position})`
+        : matchedTeacher?.position
+        ? `Proficient (${matchedTeacher.position})`
+        : 'Proficient';
+
+    const draft: AiPmcfFarDraftSession = {
+      sourceRecordId: params.sourceRecordId,
+      sourceCode: params.sourceCode,
+      evaluationType: params.evaluationType,
+      category: params.category,
+      coachingMechanism: params.coachingMechanism,
+      teacherId: resolvedTeacherId,
+      teacherName: params.teacherName,
+      careerStage,
+      subjectGrade: params.subjectGrade,
+      supervisorId: resolvedSupId,
+      supervisorName: resolvedSupName,
+      mentorId: resolvedMentorId || undefined,
+      mentorName: resolvedMentorName || undefined,
+      evaluatorRole,
+      date: params.date || new Date().toISOString().slice(0, 10),
+      term: params.term || schoolProfile.currentTerm || 'Term 1',
+      weekLabel: params.weekLabel,
+      indicatorScoresList: params.indicatorScoresList,
+      observerNotes: params.observerNotes,
+      resolved: params.resolved,
+      loading: true,
+      error: null,
+      generated: null,
+    };
+
+    setActiveAiDraft(draft);
+    void fetchGeminiPmcfAndFar(draft);
+  };
+
+  const dismissAiDraft = () => {
+    activeAiRequestIdRef.current++;
+    setActiveAiDraft(null);
+  };
+
+  const regenerateAiDraft = async () => {
+    if (!activeAiDraft) return;
+    const refreshed: AiPmcfFarDraftSession = {
+      ...activeAiDraft,
+      loading: true,
+      error: null,
+    };
+    setActiveAiDraft(refreshed);
+    await fetchGeminiPmcfAndFar(refreshed);
+  };
+
+  const saveReviewedAiPmcfFar = (
+    editedPmcf: AiGeneratedPmcfPayload,
+    editedFar: AiGeneratedFarPayload,
+    pmcfStatus?: PMCFRecord['status']
+  ) => {
+    if (!activeAiDraft) return;
+    persistPmcfAndFar({
+      sourceRecordId: activeAiDraft.sourceRecordId,
+      sourceCode: activeAiDraft.sourceCode,
+      category: activeAiDraft.category,
+      coachingMechanism: activeAiDraft.coachingMechanism,
+      teacherId: activeAiDraft.teacherId,
+      teacherName: activeAiDraft.teacherName,
+      farTeacherDisplay: editedFar.teacher || activeAiDraft.teacherName,
+      supervisorId: activeAiDraft.supervisorId,
+      supervisorName: activeAiDraft.supervisorName,
+      mentorId: activeAiDraft.mentorId,
+      mentorName: activeAiDraft.mentorName,
+      explicitRole: activeAiDraft.evaluatorRole,
+      date: editedPmcf.date || activeAiDraft.date,
+      term: activeAiDraft.term,
+      weekLabel: activeAiDraft.weekLabel,
+      criticalIncident: editedPmcf.critical_incidents_and_outputs,
+      actionPlan: editedPmcf.action_plan_intervention,
+      impact: editedPmcf.expected_output,
+      findings: editedFar.findings,
+      analysis: editedFar.analysis,
+      recommendations: editedFar.recommendations,
+      pmcfStatusOverride: pmcfStatus,
+      resolved: pmcfStatus ? pmcfStatus === 'Resolved' : activeAiDraft.resolved,
+    });
   };
 
   const addLessonPlan = (plan: Omit<LessonPlanCheck, 'id' | 'checkCode'>) => {
@@ -1407,28 +1661,48 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setLessonPlans((prev) => [newPlan, ...prev]);
 
-    if (newPlan.status === 'Approved' || newPlan.status === 'Needs Revision') {
-      autoGeneratePmcfAndFar({
+    if (
+      newPlan.status === 'Approved' ||
+      newPlan.status === 'Needs Revision' ||
+      (actor.role !== 'teacher' && Boolean(newPlan.starEvidenceNotes?.trim()))
+    ) {
+      const checklistLines = [
+        `- MELC Aligned: ${newPlan.checklist.melcAligned ? 'Evident' : 'Not Evident'}`,
+        `- Clear Objectives: ${newPlan.checklist.clearObjectives ? 'Evident' : 'Not Evident'}`,
+        `- Learning Resources Adequate: ${newPlan.checklist.learningResourcesAdequate ? 'Evident' : 'Not Evident'}`,
+        `- Pedagogical Procedures Sequenced (ILAW): ${newPlan.checklist.pedagogicalProceduresSequenced ? 'Evident' : 'Not Evident'}`,
+        `- Formative Assessment Included: ${newPlan.checklist.formativeAssessmentIncluded ? 'Evident' : 'Not Evident'}`,
+        `- Reflection Completed: ${newPlan.checklist.reflectionCompleted ? 'Evident' : 'Not Evident'}`,
+        `- Overall Inspection Status: ${newPlan.status} (Week ${newPlan.weekNumber}, ${newPlan.quarterTerm})`,
+      ];
+      const lpNotes = [
+        `Lesson Title: ${newPlan.lessonTitle}`,
+        newPlan.remarks ? `Remarks: ${newPlan.remarks}` : '',
+        newPlan.supervisorFeedback ? `Supervisor/Mentor Feedback: ${newPlan.supervisorFeedback}` : '',
+        newPlan.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${newPlan.starEvidenceNotes}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n');
+
+      startAiPmcfFarGeneration({
         sourceRecordId: newPlan.id,
         sourceCode: code,
+        evaluationType: 'Lesson Plan (DLL / DLP)',
         category: 'lesson-plan',
         coachingMechanism: 'Lesson Plan',
         teacherId: newPlan.teacherId,
         teacherName: newPlan.teacherName,
+        subjectGrade: newPlan.subjectGrade,
         supervisorId: newPlan.supervisorId,
         supervisorName: newPlan.supervisorName,
         mentorId: newPlan.mentorId,
         mentorName: newPlan.mentorName,
         explicitRole: newPlan.evaluatorRole || (actor.role === 'mentor' ? 'mentor' : 'supervisor'),
-        date: newPlan.dateChecked || newPlan.dateSubmitted,
+        date: newPlan.dateChecked !== 'Pending' ? newPlan.dateChecked : newPlan.dateSubmitted,
         term: newPlan.quarterTerm || 'Term 1',
         weekLabel: `Week ${newPlan.weekNumber}`,
-        criticalIncident: `Lesson Plan (${code}) evaluation for ${newPlan.subjectGrade} — "${newPlan.lessonTitle}". Status: ${newPlan.status}.`,
-        actionPlan: newPlan.supervisorFeedback || newPlan.remarks || 'Reviewed MELC alignment and ILAW instructional sequence.',
-        impact: newPlan.status === 'Approved' ? 'Lesson plan cleared for classroom delivery with full ILAW compliance.' : 'Targeted revisions identified prior to classroom delivery.',
-        findings: `${newPlan.subjectGrade} Weekly DLL (${code}) checked: ${newPlan.remarks || newPlan.lessonTitle}`,
-        analysis: `ILAW & DepEd Order No. 42 s. 2016 inspection resulted in status "${newPlan.status}".`,
-        recommendations: newPlan.supervisorFeedback || 'Maintain constructive alignment between MELCs, activities, and formative checks.',
+        indicatorScoresList: checklistLines.join('\n'),
+        observerNotes: lpNotes,
         resolved: newPlan.status === 'Approved',
       });
     }
@@ -1476,27 +1750,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const verEvaluator = evaluatorRole === 'mentor' ? (merged.mentorName || actor.name) : (merged.supervisorName || actor.name);
         const feedbackSnippet = merged.supervisorFeedback || '';
 
-        autoGeneratePmcfAndFar({
+        const checklistLines = [
+          `- MELC Aligned: ${merged.checklist.melcAligned ? 'Evident' : 'Not Evident'}`,
+          `- Clear Objectives: ${merged.checklist.clearObjectives ? 'Evident' : 'Not Evident'}`,
+          `- Learning Resources Adequate: ${merged.checklist.learningResourcesAdequate ? 'Evident' : 'Not Evident'}`,
+          `- Pedagogical Procedures Sequenced (ILAW): ${merged.checklist.pedagogicalProceduresSequenced ? 'Evident' : 'Not Evident'}`,
+          `- Formative Assessment Included: ${merged.checklist.formativeAssessmentIncluded ? 'Evident' : 'Not Evident'}`,
+          `- Reflection Completed: ${merged.checklist.reflectionCompleted ? 'Evident' : 'Not Evident'}`,
+          `- Verification Status: ${verStatus} (Week ${merged.weekNumber}, ${merged.quarterTerm})`,
+        ];
+        const lpNotes = [
+          `Lesson Title: ${merged.lessonTitle}`,
+          merged.remarks ? `Remarks: ${merged.remarks}` : '',
+          feedbackSnippet ? `Evaluator Feedback: ${feedbackSnippet}` : '',
+          merged.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${merged.starEvidenceNotes}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        startAiPmcfFarGeneration({
           sourceRecordId: oldPlan.id,
           sourceCode: oldPlan.checkCode,
+          evaluationType: 'Lesson Plan (DLL / DLP)',
           category: 'lesson-plan',
           coachingMechanism: 'Lesson Plan',
           teacherId: merged.teacherId,
           teacherName: merged.teacherName,
+          subjectGrade: merged.subjectGrade,
           supervisorId: merged.supervisorId,
           supervisorName: merged.supervisorName,
           mentorId: merged.mentorId,
           mentorName: merged.mentorName,
           explicitRole: evaluatorRole === 'mentor' ? 'mentor' : 'supervisor',
-          date: merged.dateChecked || merged.dateSubmitted,
+          date: merged.dateChecked !== 'Pending' ? merged.dateChecked : merged.dateSubmitted,
           term: merged.quarterTerm || 'Term 1',
           weekLabel: `Week ${merged.weekNumber}`,
-          criticalIncident: `Lesson Plan (${oldPlan.checkCode}) verified for ${merged.subjectGrade} — "${merged.lessonTitle}". Status: ${verStatus}.`,
-          actionPlan: feedbackSnippet || merged.remarks || 'Completed DLL/DLP coaching and technical review.',
-          impact: verStatus === 'Approved' ? 'Lesson plan verified ready for instruction.' : 'Teacher briefed on required DLL refinements.',
-          findings: `${merged.subjectGrade} DLL (${oldPlan.checkCode}): ${merged.remarks || merged.lessonTitle}`,
-          analysis: `Checked by ${verEvaluator} with evaluation outcome: ${verStatus}.`,
-          recommendations: feedbackSnippet || 'Ensure complete reflection notes and formative assessment items.',
+          indicatorScoresList: checklistLines.join('\n'),
+          observerNotes: lpNotes,
           resolved: verStatus === 'Approved',
         });
 
@@ -1543,25 +1833,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setFleetingObservations((prev) => [newObs, ...prev]);
 
-    autoGeneratePmcfAndFar({
+    const fleetingRatingLines = [
+      `- Walkthrough Duration: ${newObs.durationMinutes} minutes`,
+      `- Learner Engagement Level: ${newObs.learnerEngagementLevel}`,
+      `- Classroom Atmosphere: ${newObs.classroomAtmosphere}`,
+      `- Boardwork Quality: ${newObs.boardWorkQuality}`,
+      `- Time-on-Task: ${newObs.timeOnTask}`,
+      ...Object.entries(newObs.monitoringRatings || {}).map(
+        ([k, v]) => `- Walkthrough Indicator ${k}: ${v === 'E' ? 'Evident (E)' : 'Not Evident (NE)'}`
+      ),
+    ];
+    const fleetingNotes = [
+      newObs.rapidCommendation ? `Rapid Commendation: ${newObs.rapidCommendation}` : '',
+      newObs.quickCoachingTip ? `Quick Coaching Tip: ${newObs.quickCoachingTip}` : '',
+      newObs.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${newObs.starEvidenceNotes}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    startAiPmcfFarGeneration({
       sourceRecordId: newObs.id,
       sourceCode: code,
+      evaluationType: 'Fleeting & Walkthrough Observation',
       category: 'fleeting',
       coachingMechanism: 'Walkthrough/Fleeting Observations',
       teacherId: newObs.teacherId,
       teacherName: newObs.teacherName,
+      subjectGrade: `${newObs.subject} (${newObs.gradeAndSection})`,
       supervisorId: newObs.supervisorId,
       supervisorName: newObs.supervisorName,
       explicitRole: 'supervisor',
       date: newObs.date,
-      term: schoolProfile.currentTerm || 'Term 1',
+      term: newObs.quarterTerm || schoolProfile.currentTerm || 'Term 1',
       weekLabel: `Walkthrough · ${code}`,
-      criticalIncident: `${newObs.durationMinutes}-min Walkthrough (${code}) in ${newObs.subject} (${newObs.gradeAndSection}): Engagement ${newObs.learnerEngagementLevel}, Atmosphere ${newObs.classroomAtmosphere}.`,
-      actionPlan: newObs.quickCoachingTip || 'Provide immediate on-the-spot instructional coaching feedback.',
-      impact: newObs.rapidCommendation || 'Reinforced positive time-on-task and structured board work.',
-      findings: `Fleeting Observation (${code}) in ${newObs.gradeAndSection} ${newObs.subject}: ${newObs.rapidCommendation}`,
-      analysis: `Learner engagement rated ${newObs.learnerEngagementLevel}; time-on-task: ${newObs.timeOnTask}.`,
-      recommendations: newObs.quickCoachingTip || 'Sustain active engagement and structured classroom routines.',
+      indicatorScoresList: fleetingRatingLines.join('\n'),
+      observerNotes: fleetingNotes,
       resolved: true,
     });
   };
@@ -1650,28 +1956,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setImsQA((prev) => [newIm, ...prev]);
 
-    const kindLabel = newIm.materialKind === 'LM' ? "Learners' Material (LM)" : 'Instructional Material (IM)';
-    autoGeneratePmcfAndFar({
+    const kindLabel = newIm.materialKind === 'LM' ? "Learner's Material (LM) QA" : 'Instructional Material (IM) QA';
+    const imScoreLines = [
+      `- Material Title: ${newIm.title} (${newIm.type})`,
+      `- QA Status: ${newIm.status}`,
+      `- Alignment to MELC: ${newIm.alignmentToMELC ? 'Evident' : 'Not Evident'}`,
+      `- Content Accuracy Verified: ${newIm.contentAccuracyVerified ? 'Evident' : 'Not Evident'}`,
+      `- Copyright Compliant: ${newIm.copyrightCompliant ? 'Evident' : 'Not Evident'}`,
+      `- Visual Clarity & Layout: ${newIm.visualClarity ? 'Evident' : 'Not Evident'}`,
+    ];
+    const imNotes = [
+      newIm.evaluatorNotes ? `Evaluator QA Notes: ${newIm.evaluatorNotes}` : '',
+      newIm.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${newIm.starEvidenceNotes}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    startAiPmcfFarGeneration({
       sourceRecordId: newIm.id,
       sourceCode: newIm.id.toUpperCase(),
+      evaluationType: kindLabel,
       category: 'ims-lms',
       coachingMechanism: 'IMs & LMs',
       teacherId: newIm.teacherId,
       teacherName: newIm.teacherName,
+      subjectGrade: newIm.gradeSubject,
       supervisorId: newIm.supervisorId,
       supervisorName: newIm.supervisorName,
       mentorId: newIm.mentorId,
       mentorName: newIm.mentorName,
       explicitRole: evaluatorRole,
       date: newIm.dateSubmitted,
-      term: schoolProfile.currentTerm || 'Term 1',
+      term: newIm.quarterTerm || schoolProfile.currentTerm || 'Term 1',
       weekLabel: `IM/LM QA · ${newIm.gradeSubject}`,
-      criticalIncident: `${kindLabel} Quality Evaluation: "${newIm.title}" (${newIm.type}, ${newIm.gradeSubject}). Status: ${newIm.status}.`,
-      actionPlan: newIm.evaluatorNotes || 'Reviewed MELC alignment, content accuracy, LRMDS copyright compliance, and visual layout.',
-      impact: newIm.status === 'Approved for Use' ? 'Approved material ready for classroom reproduction and learner deployment.' : 'Guided teacher on required revisions for content/copyright compliance.',
-      findings: `${kindLabel} "${newIm.title}" evaluated for ${newIm.gradeSubject}: ${newIm.evaluatorNotes || newIm.status}`,
-      analysis: `Criteria met — MELC Aligned: ${newIm.alignmentToMELC ? 'Yes' : 'No'}, Content Verified: ${newIm.contentAccuracyVerified ? 'Yes' : 'No'}, Copyright Safe: ${newIm.copyrightCompliant ? 'Yes' : 'No'}, Visual Clarity: ${newIm.visualClarity ? 'Yes' : 'No'}.`,
-      recommendations: newIm.status === 'Approved for Use' ? 'Archive approved copy in LRMDS repository for department sharing.' : (newIm.evaluatorNotes || 'Address flagged QA criteria and resubmit for final review.'),
+      indicatorScoresList: imScoreLines.join('\n'),
+      observerNotes: imNotes,
       resolved: newIm.status === 'Approved for Use',
     });
   };
@@ -1685,28 +2004,41 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (oldItem) {
       const merged = { ...oldItem, ...updates };
       if (updates.status || updates.evaluatorNotes || updates.title) {
-        const kindLabel = merged.materialKind === 'LM' ? "Learners' Material (LM)" : 'Instructional Material (IM)';
-        autoGeneratePmcfAndFar({
+        const kindLabel = merged.materialKind === 'LM' ? "Learner's Material (LM) QA" : 'Instructional Material (IM) QA';
+        const imScoreLines = [
+          `- Material Title: ${merged.title} (${merged.type})`,
+          `- Updated QA Status: ${merged.status}`,
+          `- Alignment to MELC: ${merged.alignmentToMELC ? 'Evident' : 'Not Evident'}`,
+          `- Content Accuracy Verified: ${merged.contentAccuracyVerified ? 'Evident' : 'Not Evident'}`,
+          `- Copyright Compliant: ${merged.copyrightCompliant ? 'Evident' : 'Not Evident'}`,
+          `- Visual Clarity & Layout: ${merged.visualClarity ? 'Evident' : 'Not Evident'}`,
+        ];
+        const imNotes = [
+          merged.evaluatorNotes ? `Evaluator QA Notes: ${merged.evaluatorNotes}` : '',
+          merged.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${merged.starEvidenceNotes}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        startAiPmcfFarGeneration({
           sourceRecordId: merged.id,
           sourceCode: merged.id.toUpperCase(),
+          evaluationType: kindLabel,
           category: 'ims-lms',
           coachingMechanism: 'IMs & LMs',
           teacherId: merged.teacherId,
           teacherName: merged.teacherName,
+          subjectGrade: merged.gradeSubject,
           supervisorId: merged.supervisorId,
           supervisorName: merged.supervisorName,
           mentorId: merged.mentorId || (actor.role === 'mentor' ? actor.mentorId || actor.id : undefined),
           mentorName: merged.mentorName || (actor.role === 'mentor' ? actor.name : undefined),
           explicitRole: merged.evaluatorRole || (actor.role === 'mentor' ? 'mentor' : 'supervisor'),
           date: merged.dateSubmitted,
-          term: schoolProfile.currentTerm || 'Term 1',
+          term: merged.quarterTerm || schoolProfile.currentTerm || 'Term 1',
           weekLabel: `IM/LM QA · ${merged.gradeSubject}`,
-          criticalIncident: `${kindLabel} QA Updated: "${merged.title}" (${merged.gradeSubject}). Status: ${merged.status}.`,
-          actionPlan: merged.evaluatorNotes || 'Updated QA checklist & feedback.',
-          impact: merged.status === 'Approved for Use' ? 'Approved material cleared for learner distribution.' : 'Revisions logged for follow-up evaluation.',
-          findings: `${kindLabel} "${merged.title}": ${merged.evaluatorNotes || merged.status}`,
-          analysis: `Updated QA review outcome: ${merged.status}.`,
-          recommendations: merged.evaluatorNotes || 'Proceed with approved utilization or address highlighted revisions.',
+          indicatorScoresList: imScoreLines.join('\n'),
+          observerNotes: imNotes,
           resolved: merged.status === 'Approved for Use',
         });
       }
@@ -1730,13 +2062,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setAssessments((prev) => [newRec, ...prev]);
 
-    autoGeneratePmcfAndFar({
+    const mpsScoreLines = [
+      `- Assessment Type: ${newRec.assessmentType}`,
+      `- Total Takers: ${newRec.totalTakers}`,
+      `- Mean Score / HPS: ${newRec.meanScore} / ${newRec.highestPossibleScore}`,
+      `- Mean Percentage Score (MPS): ${newRec.mps}% (${newRec.targetMet ? 'Met >=75% Target' : 'Below 75% Target'})`,
+      `- Least Mastered Competencies: ${(newRec.leastMasteredCompetencies || []).join('; ') || 'None specified'}`,
+    ];
+
+    startAiPmcfFarGeneration({
       sourceRecordId: newRec.id,
       sourceCode: `${newRec.subject} MPS`,
+      evaluationType: `Assessment (${newRec.assessmentType})`,
       category: 'assessment',
       coachingMechanism: 'Assessment',
       teacherId: newRec.teacherId,
       teacherName: newRec.teacherName,
+      subjectGrade: `${newRec.subject} (${newRec.gradeLevel} - ${newRec.section})`,
       supervisorId: newRec.supervisorId,
       supervisorName: newRec.supervisorName,
       mentorId: newRec.mentorId,
@@ -1744,12 +2086,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       explicitRole: evaluatorRole,
       term: newRec.quarterTerm || 'Term 1',
       weekLabel: `${newRec.quarterTerm} · ${newRec.subject}`,
-      criticalIncident: `${newRec.assessmentType} (${newRec.subject}, ${newRec.gradeLevel} - ${newRec.section}) recorded MPS of ${newRec.mps}% (${newRec.targetMet ? 'Target Met' : 'Below 75% Target'}).`,
-      actionPlan: newRec.remediationPlan || 'Review least mastered competencies and execute remediation drills.',
-      impact: newRec.targetMet ? 'Learners met or exceeded the 75% DepEd mastery benchmark.' : 'Targeted remediation intervention initiated for least-mastered skills.',
-      findings: `${newRec.assessmentType} MPS for ${newRec.subject} (${newRec.gradeLevel}): ${newRec.mps}% across ${newRec.totalTakers} takers. Least mastered: ${(newRec.leastMasteredCompetencies || []).join('; ') || 'None reported'}.`,
-      analysis: newRec.targetMet ? 'Class achieved >= 75% mastery threshold.' : 'MPS below 75% requires immediate instructional intervention.',
-      recommendations: newRec.remediationPlan || 'Conduct item-analysis-driven remediation sessions.',
+      indicatorScoresList: mpsScoreLines.join('\n'),
+      observerNotes: newRec.remediationPlan || 'Review least mastered competencies and execute remediation plan.',
       resolved: newRec.targetMet,
     });
   };
@@ -1779,13 +2117,30 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setFormativeRecords((prev) => [newRec, ...prev]);
 
-    autoGeneratePmcfAndFar({
+    const formativeScoreLines = [
+      `- Formative Assessment Type: ${newRec.formativeType}`,
+      `- Competency / Lesson Topic: ${newRec.competencyTopic}`,
+      `- Total Learners: ${newRec.totalLearners}`,
+      `- Learners Achieving Mastery (>=75%): ${newRec.masteryCount}/${newRec.totalLearners}`,
+      `- Mean Score / HPS: ${newRec.meanScore} / ${newRec.highestPossibleScore}`,
+      `- Mean Percentage Score (MPS): ${newRec.mps.toFixed(1)}% (${newRec.status})`,
+    ];
+    const formativeNotes = [
+      newRec.feedbackNotes ? `Instructional Feedback / Remediation Notes: ${newRec.feedbackNotes}` : '',
+      newRec.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${newRec.starEvidenceNotes}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    startAiPmcfFarGeneration({
       sourceRecordId: newRec.id,
       sourceCode: code,
+      evaluationType: 'Formative Assessment',
       category: 'assessment',
       coachingMechanism: 'Assessment',
       teacherId: newRec.teacherId,
       teacherName: newRec.teacherName,
+      subjectGrade: `${newRec.subject} (${newRec.gradeLevel} - ${newRec.section})`,
       supervisorId: newRec.supervisorId,
       supervisorName: newRec.supervisorName,
       mentorId: newRec.mentorId,
@@ -1794,12 +2149,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       date: newRec.date,
       term: newRec.term,
       weekLabel: `${newRec.term} · ${code}`,
-      criticalIncident: `Formative Assessment (${code}) in ${newRec.subject} (${newRec.gradeLevel} - ${newRec.section}): ${newRec.formativeType} on "${newRec.competencyTopic}". MPS: ${newRec.mps.toFixed(1)}% (${newRec.status}).`,
-      actionPlan: newRec.feedbackNotes || 'Reviewed formative quiz items and mastery count with teacher.',
-      impact: newRec.status === 'Mastery Achieved' ? `${newRec.masteryCount}/${newRec.totalLearners} learners achieved competency mastery.` : 'Remedial practice worksheets scheduled for non-mastered learners.',
-      findings: `Formative Assessment ${code} (${newRec.subject}): MPS ${newRec.mps.toFixed(1)}% (${newRec.masteryCount}/${newRec.totalLearners} mastered).`,
-      analysis: newRec.feedbackNotes || `Formative mastery status: ${newRec.status}.`,
-      recommendations: newRec.status === 'Mastery Achieved' ? 'Proceed to next MELC competency and keep spiral exit tickets.' : 'Conduct guided seatwork and peer-tutoring follow-up before summative test.',
+      indicatorScoresList: formativeScoreLines.join('\n'),
+      observerNotes: formativeNotes,
       resolved: newRec.status === 'Mastery Achieved',
     });
 
@@ -1831,13 +2182,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setSummativeRecords((prev) => [newRec, ...prev]);
 
-    autoGeneratePmcfAndFar({
+    const summativeScoreLines = [
+      `- Summative Type: ${newRec.summativeType}${newRec.examinationPeriod ? ` (${newRec.examinationPeriod})` : ''}`,
+      `- Competency Coverage: ${newRec.competencyCoverage}`,
+      `- TOS & Answer Key Status: ${newRec.tosVerified}${newRec.tosAlignment ? ` | ${newRec.tosAlignment}` : ''}`,
+      `- Quality Sign-Off: ${newRec.qualitySignOff || 'Standard Review'}`,
+      `- Passed / Total Learners: ${newRec.passedCount}/${newRec.totalLearners}`,
+      `- Mean Score / HPS: ${newRec.meanScore} / ${newRec.highestPossibleScore} (MPS: ${newRec.mps.toFixed(1)}% — ${newRec.status})`,
+      ...(newRec.bloomRemember !== undefined
+        ? [
+            `- Bloom's Cognitive Distribution: Remember=${newRec.bloomRemember}, Understand=${newRec.bloomUnderstand ?? 0}, Apply=${newRec.bloomApply ?? 0}, Analyze=${newRec.bloomAnalyze ?? 0}, Evaluate=${newRec.bloomEvaluate ?? 0}, Create=${newRec.bloomCreate ?? 0}`,
+          ]
+        : []),
+      ...Object.entries(newRec.monitoringRatings || {}).map(
+        ([k, v]) => `- Summative Monitoring Indicator ${k}: ${v === 'E' ? 'Evident (E)' : 'Not Evident (NE)'}`
+      ),
+    ];
+    const summativeNotes = [
+      newRec.leastMasteredNotes ? `Least Mastered Competencies / Remediation: ${newRec.leastMasteredNotes}` : '',
+      newRec.itemQualityRemarks ? `Item Quality Remarks / Distracter Analysis: ${newRec.itemQualityRemarks}` : '',
+      newRec.starEvidenceNotes ? `STAR Brief Evidence/Notes: ${newRec.starEvidenceNotes}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    startAiPmcfFarGeneration({
       sourceRecordId: newRec.id,
       sourceCode: code,
+      evaluationType: 'Summative Assessment',
       category: 'assessment',
       coachingMechanism: 'Assessment',
       teacherId: newRec.teacherId,
       teacherName: newRec.teacherName,
+      subjectGrade: `${newRec.subject} (${newRec.gradeLevel} - ${newRec.section})`,
       supervisorId: newRec.supervisorId,
       supervisorName: newRec.supervisorName,
       mentorId: newRec.mentorId,
@@ -1846,12 +2223,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       date: newRec.date,
       term: newRec.term,
       weekLabel: `${newRec.term} · ${code}`,
-      criticalIncident: `Summative Assessment (${code}) in ${newRec.subject} (${newRec.gradeLevel} - ${newRec.section}): ${newRec.summativeType}, ${newRec.tosVerified}. MPS: ${newRec.mps.toFixed(1)}% (${newRec.status}).`,
-      actionPlan: newRec.leastMasteredNotes || newRec.itemQualityRemarks || 'Verified TOS cognitive distribution and planned remediation.',
-      impact: newRec.status === 'Mastery Achieved' ? `${newRec.passedCount}/${newRec.totalLearners} passed summative examination.` : 'Targeted least-mastered skill remediation planned.',
-      findings: `Summative Test ${code} (${newRec.subject}): ${newRec.tosVerified}; MPS ${newRec.mps.toFixed(1)}% (${newRec.passedCount}/${newRec.totalLearners} passed).`,
-      analysis: `${newRec.tosAlignment || ''} ${newRec.leastMasteredNotes || ''}`.trim() || `Result status: ${newRec.status}.`,
-      recommendations: newRec.itemQualityRemarks || newRec.leastMasteredNotes || 'Maintain TOS balance and remediate least-mastered competencies.',
+      indicatorScoresList: summativeScoreLines.join('\n'),
+      observerNotes: summativeNotes,
       resolved: newRec.status === 'Mastery Achieved',
     });
 
@@ -2235,6 +2608,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         cloudSyncStatus,
         lastCloudSyncTime,
         syncToCloudNow,
+        activeAiDraft,
+        dismissAiDraft,
+        regenerateAiDraft,
+        saveReviewedAiPmcfFar,
       }}
     >
       {children}

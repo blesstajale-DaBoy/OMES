@@ -17,6 +17,7 @@ import {
   SupervisionTerm,
 } from '../utils/supervisionScope';
 import { printTableReportToPdf } from '../utils/printTablePdf';
+import { StarEvidenceNotesField } from '../components/StarEvidenceNotesField';
 import {
   initGoogleDriveAuth,
   googleDriveSignIn,
@@ -94,6 +95,7 @@ export const LessonPlanCheckView: React.FC = () => {
   const [weekNumber, setWeekNumber] = useState<number | string>(9);
   const [quarterTerm, setQuarterTerm] = useState<'Term 1' | 'Term 2' | 'Term 3' | 'CO1' | 'CO2' | 'CO3' | string>('Term 1');
   const [driveUrl, setDriveUrl] = useState('');
+  const [starEvidenceNotes, setStarEvidenceNotes] = useState('');
 
   const formatWeekOrCo = (val: number | string) =>
     String(val).toUpperCase().startsWith('CO') ? String(val) : `Week ${val}`;
@@ -641,6 +643,7 @@ export const LessonPlanCheckView: React.FC = () => {
     setUploadSuccessMsg(null);
     setOauthUnverifiedNotice(false);
     setLessonTitle('');
+    setStarEvidenceNotes('');
     setIsSubmitModalOpen(true);
   };
 
@@ -657,6 +660,7 @@ export const LessonPlanCheckView: React.FC = () => {
     setWeekNumber(plan.weekNumber);
     setQuarterTerm(plan.quarterTerm);
     setDriveUrl(plan.driveUrl || '');
+    setStarEvidenceNotes(plan.starEvidenceNotes || '');
     setUploadedFileName(plan.uploadedFileName || '');
     setDriveFileId(plan.driveFileId || '');
     setUploadedFileDataUrl(plan.uploadedFileDataUrl || '');
@@ -707,6 +711,7 @@ export const LessonPlanCheckView: React.FC = () => {
         driveFileId: driveFileId || undefined,
         uploadedFileDataUrl: uploadedFileDataUrl || undefined,
         uploadedFileSize: uploadedFileSize || undefined,
+        starEvidenceNotes: starEvidenceNotes.trim(),
       });
     } else {
       addLessonPlan({
@@ -743,6 +748,7 @@ export const LessonPlanCheckView: React.FC = () => {
         status: 'Pending Inspection',
         remarks: 'Submitted for weekly inspection.',
         supervisorFeedback: 'Awaiting supervisory inspection.',
+        starEvidenceNotes: starEvidenceNotes.trim(),
       });
     }
 
@@ -750,6 +756,7 @@ export const LessonPlanCheckView: React.FC = () => {
     setEditingPlan(null);
     setLessonTitle('');
     setDriveUrl('');
+    setStarEvidenceNotes('');
     setUploadedFileName('');
     setDriveFileId('');
     setUploadedFileDataUrl('');
@@ -788,6 +795,7 @@ export const LessonPlanCheckView: React.FC = () => {
         'Supervisor / Mentor',
         'Submitted / Checked',
         'Status',
+        'Brief Evidence/Notes (STAR)',
         'Remarks & Feedback',
       ],
       rows: plansToPrint.map((lp) => {
@@ -805,6 +813,7 @@ export const LessonPlanCheckView: React.FC = () => {
           evaluatorText,
           `Submitted: ${lp.dateSubmitted}\nChecked: ${lp.dateChecked}`,
           lp.status,
+          lp.starEvidenceNotes || '—',
           `${lp.remarks || '—'}\n${lp.supervisorFeedback || ''}`.trim(),
         ];
       }),
@@ -1037,13 +1046,19 @@ export const LessonPlanCheckView: React.FC = () => {
                           <th className="py-3.5 px-4">Submitted / Checked</th>
                           <th className="py-3.5 px-4 text-center">DepEd Checklist</th>
                           <th className="py-3.5 px-4">Status</th>
+                          <th className="py-3.5 px-4 min-w-[210px]">
+                            <div>Brief Evidence/Notes</div>
+                            <div className="text-[9px] font-medium normal-case text-stone-400">
+                              (Use STAR: Situation, Task, Activity &amp; Result)
+                            </div>
+                          </th>
                           <th className="py-3.5 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
                         {termPlans.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                            <td colSpan={9} className="py-8 text-center text-stone-400">
                               No lesson plan records logged for {section.term} yet. Click &ldquo;Submit to {section.term}&rdquo; to add a lesson plan for {section.term}.
                             </td>
                           </tr>
@@ -1167,6 +1182,16 @@ export const LessonPlanCheckView: React.FC = () => {
                                       <Clock className="w-3.5 h-3.5" />
                                       Pending Review
                                     </span>
+                                  )}
+                                </td>
+
+                                <td className="py-3.5 px-4 max-w-xs text-[11px] text-stone-700">
+                                  {lp.starEvidenceNotes ? (
+                                    <p className="whitespace-pre-line leading-relaxed">
+                                      {lp.starEvidenceNotes}
+                                    </p>
+                                  ) : (
+                                    <span className="text-stone-400 italic">—</span>
                                   )}
                                 </td>
 
@@ -2073,6 +2098,12 @@ export const LessonPlanCheckView: React.FC = () => {
                   Paste your Google Drive folder or lesson plan link here so the Assigned Instructional Supervisor can directly access and inspect your DLL/DLP.
                 </p>
               </div>
+
+              {/* Brief Evidence/Notes (STAR) */}
+              <StarEvidenceNotesField
+                value={starEvidenceNotes}
+                onChange={setStarEvidenceNotes}
+              />
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button

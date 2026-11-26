@@ -8,6 +8,7 @@ import { LoginModal } from './components/LoginModal';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { PrintReportModal } from './components/PrintReportModal';
+import { AiPmcfFarReviewModal } from './components/AiPmcfFarReviewModal';
 
 // Views
 import { DashboardView } from './views/DashboardView';
@@ -239,6 +240,9 @@ const MainApp: React.FC = () => {
         observation={selectedObservation}
         onClose={() => setSelectedObservationIdForPrint(null)}
       />
+
+      {/* Gemini AI-Generated PMCF & 4-Column FAR Human-in-the-Loop Review Modal */}
+      <AiPmcfFarReviewModal />
     </div>
   );
 };

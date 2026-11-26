@@ -24,6 +24,7 @@ import {
   SummativeMonitoringToolSection,
   DEFAULT_SUMMATIVE_MONITORING_RATINGS,
 } from '../components/SummativeMonitoringToolSection';
+import { StarEvidenceNotesField } from '../components/StarEvidenceNotesField';
 import {
   FileSpreadsheet,
   Download,
@@ -156,6 +157,7 @@ export const ReportsLinksView: React.FC = () => {
   const [obsAreasForDevelopment, setObsAreasForDevelopment] = useState('');
   const [obsPreConferenceNotes, setObsPreConferenceNotes] = useState('');
   const [obsPostConferenceNotes, setObsPostConferenceNotes] = useState('');
+  const [obsStarEvidenceNotes, setObsStarEvidenceNotes] = useState('');
   const [indicatorEvident, setIndicatorEvident] = useState<Record<number, 'E' | 'NE'>>({
     1: 'E',
     2: 'E',
@@ -231,6 +233,7 @@ export const ReportsLinksView: React.FC = () => {
         obsPreConferenceNotes || 'Agreed on focal indicators prior to classroom entry.',
       postConferenceNotes:
         obsPostConferenceNotes || 'Reviewed rubric scores and discussed feedback collaboratively.',
+      starEvidenceNotes: obsStarEvidenceNotes.trim(),
       averageScore: avg,
       overallRating: evidentCount >= 7 ? 'Evident' : 'Not Evident',
       status: 'Completed',
@@ -244,6 +247,7 @@ export const ReportsLinksView: React.FC = () => {
     setObsAreasForDevelopment('');
     setObsPreConferenceNotes('');
     setObsPostConferenceNotes('');
+    setObsStarEvidenceNotes('');
     showToast('Saved Classroom Observation record successfully.');
   };
 
@@ -268,6 +272,7 @@ export const ReportsLinksView: React.FC = () => {
   >({ ...DEFAULT_FLEETING_MONITORING_RATINGS });
   const [rapidCommendation, setRapidCommendation] = useState('');
   const [quickCoachingTip, setQuickCoachingTip] = useState('');
+  const [fleetingStarEvidenceNotes, setFleetingStarEvidenceNotes] = useState('');
 
   const handleOpenFleetingModal = () => {
     setFleetingTeacherId(modalTeacherPool[0]?.id || '');
@@ -281,6 +286,7 @@ export const ReportsLinksView: React.FC = () => {
     setFleetingMonitoringRatings({ ...DEFAULT_FLEETING_MONITORING_RATINGS });
     setRapidCommendation('');
     setQuickCoachingTip('');
+    setFleetingStarEvidenceNotes('');
     setIsFleetingModalOpen(true);
   };
 
@@ -317,11 +323,13 @@ export const ReportsLinksView: React.FC = () => {
         rapidCommendation || 'Observed good time-on-task and orderly classroom management.',
       quickCoachingTip:
         quickCoachingTip || 'Continue reinforcing verbal affirmation for quiet learners.',
+      starEvidenceNotes: fleetingStarEvidenceNotes.trim(),
     });
 
     setIsFleetingModalOpen(false);
     setRapidCommendation('');
     setQuickCoachingTip('');
+    setFleetingStarEvidenceNotes('');
     showToast('Saved Fleeting & Walkthrough Observation record successfully.');
   };
 
@@ -338,6 +346,7 @@ export const ReportsLinksView: React.FC = () => {
     'Term 1' | 'Term 2' | 'Term 3' | 'CO1' | 'CO2' | 'CO3'
   >('Term 1');
   const [dllDriveUrl, setDllDriveUrl] = useState(supervisors[0]?.driveUrl || '');
+  const [dllStarEvidenceNotes, setDllStarEvidenceNotes] = useState('');
 
   const assignedDllSupervisor =
     supervisors.find((s) => s.id === dllSupervisorId) || supervisors[0];
@@ -364,6 +373,7 @@ export const ReportsLinksView: React.FC = () => {
     setDllQuarterTerm('Term 1');
     setDllDriveUrl(activeMentor?.driveUrl || activeSupervisor?.driveUrl || sup?.driveUrl || '');
     setDllLessonTitle('');
+    setDllStarEvidenceNotes('');
     setIsSubmitLessonPlanModalOpen(true);
   };
 
@@ -415,11 +425,13 @@ export const ReportsLinksView: React.FC = () => {
       status: 'Pending Inspection',
       remarks: 'Submitted for weekly inspection.',
       supervisorFeedback: 'Awaiting supervisory inspection.',
+      starEvidenceNotes: dllStarEvidenceNotes.trim(),
     });
 
     setIsSubmitLessonPlanModalOpen(false);
     setDllLessonTitle('');
     setDllDriveUrl('');
+    setDllStarEvidenceNotes('');
     showToast('Submitted Weekly Lesson Plan (DLL) record successfully.');
   };
 
@@ -444,6 +456,7 @@ export const ReportsLinksView: React.FC = () => {
   const [formativeHps, setFormativeHps] = useState(20);
   const [formativeFeedback, setFormativeFeedback] = useState('');
   const [formativeGoogleDriveLink, setFormativeGoogleDriveLink] = useState('');
+  const [formativeStarEvidenceNotes, setFormativeStarEvidenceNotes] = useState('');
 
   // Summative Assessment State
   const [summativeTerm, setSummativeTerm] = useState<SummativeTerm>('Term 1');
@@ -476,6 +489,7 @@ export const ReportsLinksView: React.FC = () => {
     ...DEFAULT_SUMMATIVE_MONITORING_RATINGS,
   });
   const [summativeGoogleDriveLink, setSummativeGoogleDriveLink] = useState('');
+  const [summativeStarEvidenceNotes, setSummativeStarEvidenceNotes] = useState('');
 
   // Record MPS Assessment State
   const [mpsSubject, setMpsSubject] = useState('Science 9');
@@ -525,6 +539,8 @@ export const ReportsLinksView: React.FC = () => {
     setSummativeSubject(defaultTeacher?.subject || defaultTeacher?.department || 'Mathematics');
     setSummativeGradeLevel(defaultTeacher?.gradeLevels?.[0] || 'Grade 10');
     setSummativeMonitoringRatings({ ...DEFAULT_SUMMATIVE_MONITORING_RATINGS });
+    setFormativeStarEvidenceNotes('');
+    setSummativeStarEvidenceNotes('');
 
     setMpsTeacherName(defaultTeacher?.fullName || '');
     setIsCheckingAssessmentModalOpen(true);
@@ -572,12 +588,14 @@ export const ReportsLinksView: React.FC = () => {
       feedbackNotes: formativeFeedback,
       status,
       googleDriveLink: formativeGoogleDriveLink.trim(),
+      starEvidenceNotes: formativeStarEvidenceNotes.trim(),
     });
 
     setIsCheckingAssessmentModalOpen(false);
     setFormativeCompetency('');
     setFormativeFeedback('');
     setFormativeGoogleDriveLink('');
+    setFormativeStarEvidenceNotes('');
     showToast(`Saved Formative Assessment (${formativeTerm}) record successfully.`);
   };
 
@@ -642,6 +660,7 @@ export const ReportsLinksView: React.FC = () => {
       itemQualityRemarks: summativeItemQualityRemarks,
       monitoringRatings: { ...summativeMonitoringRatings },
       googleDriveLink: summativeGoogleDriveLink.trim(),
+      starEvidenceNotes: summativeStarEvidenceNotes.trim(),
     });
 
     setIsCheckingAssessmentModalOpen(false);
@@ -650,6 +669,7 @@ export const ReportsLinksView: React.FC = () => {
     setSummativeItemQualityRemarks('');
     setSummativeMonitoringRatings({ ...DEFAULT_SUMMATIVE_MONITORING_RATINGS });
     setSummativeGoogleDriveLink('');
+    setSummativeStarEvidenceNotes('');
     showToast(`Saved Summative Assessment (${summativeTerm}) record successfully.`);
   };
 
@@ -1640,6 +1660,11 @@ export const ReportsLinksView: React.FC = () => {
                 </div>
               </div>
 
+              <StarEvidenceNotesField
+                value={obsStarEvidenceNotes}
+                onChange={setObsStarEvidenceNotes}
+              />
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 shrink-0">
                 <button
                   type="button"
@@ -1885,6 +1910,11 @@ export const ReportsLinksView: React.FC = () => {
                 />
               </div>
 
+              <StarEvidenceNotesField
+                value={fleetingStarEvidenceNotes}
+                onChange={setFleetingStarEvidenceNotes}
+              />
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 shrink-0">
                 <button
                   type="button"
@@ -2128,6 +2158,11 @@ export const ReportsLinksView: React.FC = () => {
                   Paste your Google Drive folder or lesson plan link here so the Assigned Instructional Supervisor can directly access and inspect your DLL/DLP.
                 </p>
               </div>
+
+              <StarEvidenceNotesField
+                value={dllStarEvidenceNotes}
+                onChange={setDllStarEvidenceNotes}
+              />
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button
@@ -2668,6 +2703,11 @@ export const ReportsLinksView: React.FC = () => {
                   />
                 </div>
 
+                <StarEvidenceNotesField
+                  value={summativeStarEvidenceNotes}
+                  onChange={setSummativeStarEvidenceNotes}
+                />
+
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                   <button
                     type="button"
@@ -2927,6 +2967,11 @@ export const ReportsLinksView: React.FC = () => {
                     className="w-full border border-stone-300 rounded-lg p-2 font-mono"
                   />
                 </div>
+
+                <StarEvidenceNotesField
+                  value={formativeStarEvidenceNotes}
+                  onChange={setFormativeStarEvidenceNotes}
+                />
 
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                   <button

@@ -16,6 +16,7 @@ import {
 import { PrintClassroomObservationTableModal } from '../components/PrintClassroomObservationTableModal';
 import { PrintPmcfReportModal } from '../components/PrintPmcfReportModal';
 import { PrintFarReportModal } from '../components/PrintFarReportModal';
+import { StarEvidenceNotesField } from '../components/StarEvidenceNotesField';
 import {
   matchesRoleSupervisionScope,
   SupervisionScopeBanner,
@@ -200,6 +201,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
   >({ ...DEFAULT_FLEETING_MONITORING_RATINGS });
   const [rapidCommendation, setRapidCommendation] = useState('');
   const [quickCoachingTip, setQuickCoachingTip] = useState('');
+  const [fleetingStarEvidenceNotes, setFleetingStarEvidenceNotes] = useState('');
 
   // Conduct New Classroom Observation Modal & Print State
   const [isClassroomObsModalOpen, setIsClassroomObsModalOpen] = useState(false);
@@ -221,6 +223,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
   const [obsPostConferenceNotes, setObsPostConferenceNotes] = useState('');
   const [obsStrengths, setObsStrengths] = useState('');
   const [obsAreasForDevelopment, setObsAreasForDevelopment] = useState('');
+  const [obsStarEvidenceNotes, setObsStarEvidenceNotes] = useState('');
   const [indicatorEvident, setIndicatorEvident] = useState<Record<number, 'E' | 'NE'>>({
     1: 'E',
     2: 'E',
@@ -446,6 +449,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     setFleetingMonitoringRatings({ ...DEFAULT_FLEETING_MONITORING_RATINGS });
     setRapidCommendation('');
     setQuickCoachingTip('');
+    setFleetingStarEvidenceNotes('');
     setIsModalOpen(true);
   };
 
@@ -471,6 +475,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     );
     setRapidCommendation(visit.rapidCommendation);
     setQuickCoachingTip(visit.quickCoachingTip);
+    setFleetingStarEvidenceNotes(visit.starEvidenceNotes || '');
     setIsModalOpen(true);
   };
 
@@ -506,6 +511,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
           rapidCommendation || 'Observed good time-on-task and orderly classroom management.',
         quickCoachingTip:
           quickCoachingTip || 'Continue reinforcing verbal affirmation for quiet learners.',
+        starEvidenceNotes: fleetingStarEvidenceNotes.trim(),
       });
     } else {
       addFleetingObservation({
@@ -528,6 +534,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
           rapidCommendation || 'Observed good time-on-task and orderly classroom management.',
         quickCoachingTip:
           quickCoachingTip || 'Continue reinforcing verbal affirmation for quiet learners.',
+        starEvidenceNotes: fleetingStarEvidenceNotes.trim(),
       });
     }
 
@@ -535,6 +542,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     setIsModalOpen(false);
     setRapidCommendation('');
     setQuickCoachingTip('');
+    setFleetingStarEvidenceNotes('');
   };
 
   const handleEvidentChange = (id: number, status: 'E' | 'NE') => {
@@ -600,6 +608,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
       status: 'Completed',
       acknowledgedByTeacher: true,
       teacherSignatureDate: obsDate,
+      starEvidenceNotes: obsStarEvidenceNotes.trim(),
     });
 
     setIsClassroomObsModalOpen(false);
@@ -608,6 +617,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     setObsAreasForDevelopment('');
     setObsPreConferenceNotes('');
     setObsPostConferenceNotes('');
+    setObsStarEvidenceNotes('');
   };
 
   const handleOpenAddPmcf = (context: 'classroom' | 'fleeting' = 'classroom') => {
@@ -772,6 +782,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
             <td>Engagement: ${v.learnerEngagementLevel}<br/>Climate: ${v.classroomAtmosphere}<br/>${v.boardWorkQuality} · ${v.timeOnTask}</td>
             <td style="text-align:center;font-weight:bold;">E: ${evidentCount} / NE: ${notEvidentCount}</td>
             <td><strong>Commendation:</strong> ${v.rapidCommendation}<br/><strong>Coaching Tip:</strong> ${v.quickCoachingTip}</td>
+            <td>${v.starEvidenceNotes || '—'}</td>
             <td>${supLabel}<br/><span style="font-size:10px;color:#64748b;">${v.date} (${v.durationMinutes}m)</span></td>
           </tr>`;
       })
@@ -808,11 +819,12 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         <th style="width:165px;">Pulse Parameters</th>
         <th style="width:85px;text-align:center;">E / NE Score</th>
         <th>Commendation &amp; Coaching Tip</th>
+        <th>Brief Evidence/Notes (STAR)</th>
         <th style="width:130px;">Observer &amp; Date</th>
       </tr>
     </thead>
     <tbody>
-      ${rowsHtml || '<tr><td colspan="7" style="text-align:center;padding:16px;">No Fleeting &amp; Walkthrough Observation records found.</td></tr>'}
+      ${rowsHtml || '<tr><td colspan="8" style="text-align:center;padding:16px;">No Fleeting &amp; Walkthrough Observation records found.</td></tr>'}
     </tbody>
   </table>
 </body>
@@ -1097,6 +1109,12 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                           <th className="py-3 px-4">Monitoring Tool Indicators (E / NE)</th>
                           <th className="py-3 px-4">Evaluation Status</th>
                           <th className="py-3 px-4">Commendation &amp; Coaching Tip</th>
+                          <th className="py-3 px-4 min-w-[210px]">
+                            <div>Brief Evidence/Notes</div>
+                            <div className="text-[9px] font-medium normal-case text-stone-400">
+                              (Use STAR: Situation, Task, Activity &amp; Result)
+                            </div>
+                          </th>
                           <th className="py-3 px-4">Observer &amp; Date</th>
                           {!isTeacher && <th className="py-3 px-4 text-right">Actions</th>}
                         </tr>
@@ -1104,7 +1122,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                       <tbody className="divide-y divide-stone-100">
                         {termVisits.length === 0 ? (
                           <tr>
-                            <td colSpan={isTeacher ? 8 : 9} className="py-8 text-center text-stone-400">
+                            <td colSpan={isTeacher ? 9 : 10} className="py-8 text-center text-stone-400">
                               No Fleeting &amp; Walkthrough Observation records for {section.term} yet. Click &ldquo;Log Walkthrough ({section.term})&rdquo; to add a record.
                             </td>
                           </tr>
@@ -1211,6 +1229,15 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                                     <span className="font-bold text-amber-700">Coaching Tip: </span>
                                     {v.quickCoachingTip}
                                   </div>
+                                </td>
+                                <td className="py-3 px-4 max-w-xs text-[11px] text-stone-700">
+                                  {v.starEvidenceNotes ? (
+                                    <p className="whitespace-pre-line leading-relaxed">
+                                      {v.starEvidenceNotes}
+                                    </p>
+                                  ) : (
+                                    <span className="text-stone-400 italic">—</span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-4 text-[11px] text-stone-600">
                                   <div className="font-semibold text-stone-800">
@@ -1854,13 +1881,19 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                           <th className="py-3 px-4">Assigned Instructional Supervisor</th>
                           <th className="py-3 px-4 text-center">Live Indicator (E / NE)</th>
                           <th className="py-3 px-4">Evaluation Status</th>
+                          <th className="py-3 px-4 min-w-[210px]">
+                            <div>Brief Evidence/Notes</div>
+                            <div className="text-[9px] font-medium normal-case text-stone-400">
+                              (Use STAR: Situation, Task, Activity &amp; Result)
+                            </div>
+                          </th>
                           <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
                         {termObs.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                            <td colSpan={9} className="py-8 text-center text-stone-400">
                               No Classroom Observation records for {section.term} yet. Click &ldquo;Conduct Classroom Observation ({section.term})&rdquo; to add a record.
                             </td>
                           </tr>
@@ -1919,6 +1952,15 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                                   >
                                     {obs.overallRating}
                                   </span>
+                                </td>
+                                <td className="py-3 px-4 max-w-xs text-[11px] text-stone-700">
+                                  {obs.starEvidenceNotes ? (
+                                    <p className="whitespace-pre-line leading-relaxed">
+                                      {obs.starEvidenceNotes}
+                                    </p>
+                                  ) : (
+                                    <span className="text-stone-400 italic">—</span>
+                                  )}
                                 </td>
                                 <td className="py-3 px-4 text-right">
                                   <div className="flex items-center justify-end gap-1">
@@ -2523,6 +2565,11 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                 />
               </div>
 
+              <StarEvidenceNotesField
+                value={fleetingStarEvidenceNotes}
+                onChange={setFleetingStarEvidenceNotes}
+              />
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 shrink-0">
                 <button
                   type="button"
@@ -2834,6 +2881,11 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                   />
                 </div>
               </div>
+
+              <StarEvidenceNotesField
+                value={obsStarEvidenceNotes}
+                onChange={setObsStarEvidenceNotes}
+              />
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 shrink-0">
                 <button

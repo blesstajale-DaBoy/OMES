@@ -18,6 +18,7 @@ import {
   SummativeMonitoringToolSection,
   DEFAULT_SUMMATIVE_MONITORING_RATINGS,
 } from '../components/SummativeMonitoringToolSection';
+import { StarEvidenceNotesField } from '../components/StarEvidenceNotesField';
 import {
   matchesRoleSupervisionScope,
   SupervisionScopeBanner,
@@ -155,6 +156,7 @@ export const FarPmcfView: React.FC = () => {
   const [formativeHps, setFormativeHps] = useState(20);
   const [formativeFeedback, setFormativeFeedback] = useState('');
   const [formativeGoogleDriveLink, setFormativeGoogleDriveLink] = useState('');
+  const [formativeStarEvidenceNotes, setFormativeStarEvidenceNotes] = useState('');
 
   const openNewFormativeModal = (defaultTerm?: FormativeTerm) => {
     setEditingFormative(null);
@@ -174,6 +176,7 @@ export const FarPmcfView: React.FC = () => {
     setFormativeHps(20);
     setFormativeFeedback('');
     setFormativeGoogleDriveLink('');
+    setFormativeStarEvidenceNotes('');
     setIsFormativeModalOpen(true);
   };
 
@@ -193,6 +196,7 @@ export const FarPmcfView: React.FC = () => {
     setFormativeHps(record.highestPossibleScore);
     setFormativeFeedback(record.feedbackNotes);
     setFormativeGoogleDriveLink(record.googleDriveLink || '');
+    setFormativeStarEvidenceNotes(record.starEvidenceNotes || '');
     setIsFormativeModalOpen(true);
   };
 
@@ -242,6 +246,7 @@ export const FarPmcfView: React.FC = () => {
         feedbackNotes: formativeFeedback,
         status,
         googleDriveLink: formativeGoogleDriveLink.trim(),
+        starEvidenceNotes: formativeStarEvidenceNotes.trim(),
       });
     } else {
       addFormativeRecord({
@@ -267,6 +272,7 @@ export const FarPmcfView: React.FC = () => {
         feedbackNotes: formativeFeedback,
         status,
         googleDriveLink: formativeGoogleDriveLink.trim(),
+        starEvidenceNotes: formativeStarEvidenceNotes.trim(),
       });
     }
 
@@ -317,6 +323,7 @@ export const FarPmcfView: React.FC = () => {
     ...DEFAULT_SUMMATIVE_MONITORING_RATINGS,
   });
   const [summativeGoogleDriveLink, setSummativeGoogleDriveLink] = useState('');
+  const [summativeStarEvidenceNotes, setSummativeStarEvidenceNotes] = useState('');
 
   const bloomTotalAllocated =
     Number(summativeBloomRemember || 0) +
@@ -369,6 +376,7 @@ export const FarPmcfView: React.FC = () => {
     setSummativeItemQualityRemarks('');
     setSummativeMonitoringRatings({ ...DEFAULT_SUMMATIVE_MONITORING_RATINGS });
     setSummativeGoogleDriveLink('');
+    setSummativeStarEvidenceNotes('');
     setIsSummativeModalOpen(true);
   };
 
@@ -412,6 +420,7 @@ export const FarPmcfView: React.FC = () => {
       ...(record.monitoringRatings || {}),
     });
     setSummativeGoogleDriveLink(record.googleDriveLink || '');
+    setSummativeStarEvidenceNotes(record.starEvidenceNotes || '');
     setIsSummativeModalOpen(true);
   };
 
@@ -480,6 +489,7 @@ export const FarPmcfView: React.FC = () => {
         itemQualityRemarks: summativeItemQualityRemarks,
         monitoringRatings: { ...summativeMonitoringRatings },
         googleDriveLink: summativeGoogleDriveLink.trim(),
+        starEvidenceNotes: summativeStarEvidenceNotes.trim(),
       });
     } else {
       addSummativeRecord({
@@ -520,6 +530,7 @@ export const FarPmcfView: React.FC = () => {
         itemQualityRemarks: summativeItemQualityRemarks,
         monitoringRatings: { ...summativeMonitoringRatings },
         googleDriveLink: summativeGoogleDriveLink.trim(),
+        starEvidenceNotes: summativeStarEvidenceNotes.trim(),
       });
     }
 
@@ -1020,6 +1031,7 @@ export const FarPmcfView: React.FC = () => {
         'Strategy & Competency',
         'Mastery / MPS',
         'Instructional Feedback',
+        'Brief Evidence/Notes (STAR)',
       ],
       rows: rowsToPrint.map((item) => [
         `${item.code}\n${item.date}`,
@@ -1033,6 +1045,7 @@ export const FarPmcfView: React.FC = () => {
         `${item.formativeType}: ${item.competencyTopic}`,
         `${item.mps.toFixed(1)}% (${item.status})`,
         item.feedbackNotes || '—',
+        item.starEvidenceNotes || '—',
       ]),
     });
   };
@@ -1058,10 +1071,11 @@ export const FarPmcfView: React.FC = () => {
         'Summative Type & TOS QA',
         'Mastery / MPS',
         'Least Mastered & QA Remarks',
+        'Brief Evidence/Notes (STAR)',
       ],
       rows: rowsToPrint.map((item) => [
         `${item.code}\n${item.date}`,
-        item.term,
+        normalizeRecordTerm(item.term, item.date),
         `${item.teacherName}\n${
           item.evaluatorRole === 'mentor' && item.mentorName
             ? `Mentor: ${item.mentorName}`
@@ -1071,6 +1085,7 @@ export const FarPmcfView: React.FC = () => {
         `${item.summativeType} · ${item.tosVerified}\n${item.competencyCoverage}`,
         `${item.mps.toFixed(1)}% (${item.status})`,
         `${item.leastMasteredNotes || '—'}${item.itemQualityRemarks ? `\nQA: ${item.itemQualityRemarks}` : ''}`,
+        item.starEvidenceNotes || '—',
       ]),
     });
   };
@@ -1618,6 +1633,12 @@ export const FarPmcfView: React.FC = () => {
                           <th className="py-3 px-4">Formative Strategy & Competency</th>
                           <th className="py-3 px-4">Mastery / MPS</th>
                           <th className="py-3 px-4">Instructional Feedback</th>
+                          <th className="py-3 px-4 min-w-[210px]">
+                            <div>Brief Evidence/Notes</div>
+                            <div className="text-[9px] font-medium normal-case text-stone-400">
+                              (Use STAR: Situation, Task, Activity &amp; Result)
+                            </div>
+                          </th>
                           <th className="py-3 px-4">Google Drive</th>
                           <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
@@ -1625,7 +1646,7 @@ export const FarPmcfView: React.FC = () => {
                       <tbody className="divide-y divide-stone-200 text-xs">
                         {termRecords.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                            <td colSpan={9} className="py-8 text-center text-stone-400">
                               No formative records logged for {section.title} yet. Click &ldquo;Formative&rdquo; or &ldquo;Add to {section.term}&rdquo; to add a record.
                             </td>
                           </tr>
@@ -1686,6 +1707,15 @@ export const FarPmcfView: React.FC = () => {
                               </td>
                               <td className="py-3 px-4 text-stone-600 max-w-xs">
                                 {item.feedbackNotes || '—'}
+                              </td>
+                              <td className="py-3 px-4 max-w-xs text-[11px] text-stone-700">
+                                {item.starEvidenceNotes ? (
+                                  <p className="whitespace-pre-line leading-relaxed">
+                                    {item.starEvidenceNotes}
+                                  </p>
+                                ) : (
+                                  <span className="text-stone-400 italic">—</span>
+                                )}
                               </td>
                               <td className="py-3 px-4 whitespace-nowrap">
                                 {item.googleDriveLink ? (
@@ -1911,6 +1941,12 @@ export const FarPmcfView: React.FC = () => {
                           <th className="py-3 px-4">Summative Type, TOS QA & Coverage</th>
                           <th className="py-3 px-4">Mastery / MPS</th>
                           <th className="py-3 px-4">Least Mastered & Action</th>
+                          <th className="py-3 px-4 min-w-[210px]">
+                            <div>Brief Evidence/Notes</div>
+                            <div className="text-[9px] font-medium normal-case text-stone-400">
+                              (Use STAR: Situation, Task, Activity &amp; Result)
+                            </div>
+                          </th>
                           <th className="py-3 px-4">Google Drive</th>
                           <th className="py-3 px-4 text-right">Actions</th>
                         </tr>
@@ -1918,7 +1954,7 @@ export const FarPmcfView: React.FC = () => {
                       <tbody className="divide-y divide-stone-200 text-xs">
                         {termRecords.length === 0 ? (
                           <tr>
-                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                            <td colSpan={9} className="py-8 text-center text-stone-400">
                               No summative records logged for {section.title} yet. Click &ldquo;Summative&rdquo; or &ldquo;Add to {section.term}&rdquo; to add a record.
                             </td>
                           </tr>
@@ -2004,6 +2040,15 @@ export const FarPmcfView: React.FC = () => {
                                   <div className="text-[10px] text-teal-800 mt-1 italic">
                                     QA: {item.itemQualityRemarks}
                                   </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-4 max-w-xs text-[11px] text-stone-700">
+                                {item.starEvidenceNotes ? (
+                                  <p className="whitespace-pre-line leading-relaxed">
+                                    {item.starEvidenceNotes}
+                                  </p>
+                                ) : (
+                                  <span className="text-stone-400 italic">—</span>
                                 )}
                               </td>
                               <td className="py-3 px-4 whitespace-nowrap">
@@ -3155,6 +3200,11 @@ export const FarPmcfView: React.FC = () => {
                 />
               </div>
 
+              <StarEvidenceNotesField
+                value={formativeStarEvidenceNotes}
+                onChange={setFormativeStarEvidenceNotes}
+              />
+
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button
                   type="button"
@@ -3655,6 +3705,11 @@ export const FarPmcfView: React.FC = () => {
                   className="w-full border border-stone-300 rounded-lg p-2 font-mono"
                 />
               </div>
+
+              <StarEvidenceNotesField
+                value={summativeStarEvidenceNotes}
+                onChange={setSummativeStarEvidenceNotes}
+              />
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200">
                 <button
