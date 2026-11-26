@@ -2039,7 +2039,9 @@ export const ReportsLinksView: React.FC = () => {
                     }}
                     className="w-full border border-stone-300 rounded-xl p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#701628]"
                   >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((w) => (
+                    {[
+                      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                    ].map((w) => (
                       <option key={w} value={w}>
                         Week {w}
                       </option>

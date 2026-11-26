@@ -19,6 +19,8 @@ import {
   resolveActiveMentorForUser,
   resolveRecordMentor,
   getScopedTeachersForModal,
+  normalizeRecordTerm,
+  SupervisionTerm,
 } from '../utils/supervisionScope';
 import { printTableReportToPdf } from '../utils/printTablePdf';
 import {
@@ -69,11 +71,14 @@ export const ImsAssessmentsView: React.FC = () => {
   // Edit States
   const [editingIM, setEditingIM] = useState<InstructionalMaterialQA | null>(null);
 
+  const [selectedImTermFilter, setSelectedImTermFilter] = useState<'ALL' | SupervisionTerm>('ALL');
+
   // New IM Form
   const [imTitle, setImTitle] = useState('');
   const [imType, setImType] = useState<InstructionalMaterialQA['type']>('Learner Activity Sheet (LAS)');
   const [imTeacherId, setImTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
   const [imGradeSubject, setImGradeSubject] = useState('Science 9');
+  const [imQuarterTerm, setImQuarterTerm] = useState<SupervisionTerm>('Term 1');
   const [imFileUrl, setImFileUrl] = useState('');
 
   // New LM Form State
@@ -81,6 +86,7 @@ export const ImsAssessmentsView: React.FC = () => {
   const [lmType, setLmType] = useState<InstructionalMaterialQA['type']>('Self-Learning Module (SLM)');
   const [lmTeacherId, setLmTeacherId] = useState(scopedTeachers[0]?.id || teachers[0]?.id || '');
   const [lmGradeSubject, setLmGradeSubject] = useState('Mathematics 10');
+  const [lmQuarterTerm, setLmQuarterTerm] = useState<SupervisionTerm>('Term 1');
   const [lmFileUrl, setLmFileUrl] = useState('');
 
   // Edit IM / LM Form State
@@ -89,6 +95,7 @@ export const ImsAssessmentsView: React.FC = () => {
   const [editImType, setEditImType] = useState<InstructionalMaterialQA['type']>('Learner Activity Sheet (LAS)');
   const [editImTeacherId, setEditImTeacherId] = useState('');
   const [editImGradeSubject, setEditImGradeSubject] = useState('');
+  const [editImQuarterTerm, setEditImQuarterTerm] = useState<SupervisionTerm>('Term 1');
   const [editImFileUrl, setEditImFileUrl] = useState('');
   const [editImStatus, setEditImStatus] = useState<InstructionalMaterialQA['status']>('Approved for Use');
   const [editImEvaluatorNotes, setEditImEvaluatorNotes] = useState('');
@@ -211,13 +218,19 @@ export const ImsAssessmentsView: React.FC = () => {
     );
   });
 
-  const handleOpenIMModal = () => {
+  const handleOpenIMModal = (defaultTerm?: SupervisionTerm) => {
     setImTeacherId(scopedTeachers[0]?.id || teachers[0]?.id || '');
+    setImQuarterTerm(
+      defaultTerm || (selectedImTermFilter !== 'ALL' ? selectedImTermFilter : 'Term 1')
+    );
     setIsIMModalOpen(true);
   };
 
-  const handleOpenLMModal = () => {
+  const handleOpenLMModal = (defaultTerm?: SupervisionTerm) => {
     setLmTeacherId(scopedTeachers[0]?.id || teachers[0]?.id || '');
+    setLmQuarterTerm(
+      defaultTerm || (selectedImTermFilter !== 'ALL' ? selectedImTermFilter : 'Term 1')
+    );
     setIsLMModalOpen(true);
   };
 
@@ -234,6 +247,7 @@ export const ImsAssessmentsView: React.FC = () => {
       teachers[0];
     setEditImTeacherId(matchedTeacher?.id || im.teacherId);
     setEditImGradeSubject(im.gradeSubject);
+    setEditImQuarterTerm(normalizeRecordTerm(im.quarterTerm, im.dateSubmitted));
     setEditImFileUrl(im.fileUrl || '');
     setEditImStatus(im.status);
     setEditImEvaluatorNotes(im.evaluatorNotes);
@@ -286,6 +300,7 @@ export const ImsAssessmentsView: React.FC = () => {
         ? 'supervisor'
         : editingIM.evaluatorRole || (isAdmin ? 'admin' : undefined),
       gradeSubject: editImGradeSubject,
+      quarterTerm: editImQuarterTerm,
       fileUrl: editImFileUrl.trim(),
       status: editImStatus,
       evaluatorNotes: editImEvaluatorNotes,
@@ -294,6 +309,9 @@ export const ImsAssessmentsView: React.FC = () => {
       copyrightCompliant: editImCopyright,
       visualClarity: editImVisual,
     });
+    if (selectedImTermFilter !== 'ALL' && selectedImTermFilter !== editImQuarterTerm) {
+      setSelectedImTermFilter(editImQuarterTerm);
+    }
     setEditingIM(null);
   };
 
@@ -326,6 +344,7 @@ export const ImsAssessmentsView: React.FC = () => {
       mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : resolvedMentor?.fullName,
       evaluatorRole,
       gradeSubject: imGradeSubject,
+      quarterTerm: imQuarterTerm,
       dateSubmitted: new Date().toISOString().slice(0, 10),
       alignmentToMELC: true,
       contentAccuracyVerified: true,
@@ -338,6 +357,9 @@ export const ImsAssessmentsView: React.FC = () => {
         ? 'Submitted by teacher for QA evaluation.'
         : 'Reviewed by instructional supervisor. Suitable for classroom deployment.',
     });
+    if (selectedImTermFilter !== 'ALL' && selectedImTermFilter !== imQuarterTerm) {
+      setSelectedImTermFilter(imQuarterTerm);
+    }
     setIsIMModalOpen(false);
     setImTitle('');
     setImFileUrl('');
@@ -372,6 +394,7 @@ export const ImsAssessmentsView: React.FC = () => {
       mentorName: isMentor ? (resolvedMentor?.fullName || currentUser?.fullName) : resolvedMentor?.fullName,
       evaluatorRole,
       gradeSubject: lmGradeSubject,
+      quarterTerm: lmQuarterTerm,
       dateSubmitted: new Date().toISOString().slice(0, 10),
       alignmentToMELC: true,
       contentAccuracyVerified: true,
@@ -384,6 +407,9 @@ export const ImsAssessmentsView: React.FC = () => {
         ? 'Submitted by teacher for QA evaluation.'
         : 'Reviewed by instructional supervisor. Suitable for learner independent study and review.',
     });
+    if (selectedImTermFilter !== 'ALL' && selectedImTermFilter !== lmQuarterTerm) {
+      setSelectedImTermFilter(lmQuarterTerm);
+    }
     setIsLMModalOpen(false);
     setLmTitle('');
     setLmFileUrl('');
@@ -556,15 +582,21 @@ export const ImsAssessmentsView: React.FC = () => {
     setFarRecommendations('');
   };
 
-  const handlePrintImsTable = () => {
+  const handlePrintImsTable = (termFilter?: SupervisionTerm) => {
+    const rowsToPrint = termFilter
+      ? filteredIMs.filter((im) => normalizeRecordTerm(im.quarterTerm, im.dateSubmitted) === termFilter)
+      : filteredIMs;
     printTableReportToPdf({
-      title: "Instructional Materials (IMs) & Learners' Materials (LMs) QA Table",
+      title: termFilter
+        ? `Instructional Materials (IMs) & Learners' Materials (LMs) QA Table — ${termFilter}`
+        : "Instructional Materials (IMs) & Learners' Materials (LMs) QA Table",
       subtitle: 'DepEd Quality Assurance Criteria Checklist',
       schoolName: schoolProfile.schoolName,
       schoolId: schoolProfile.schoolId,
       address: schoolProfile.address,
       preparedBy: currentUser?.fullName || 'Instructional Supervisor',
       headers: [
+        'Term',
         'Kind & Type',
         'Title',
         'Teacher & Evaluator',
@@ -573,7 +605,7 @@ export const ImsAssessmentsView: React.FC = () => {
         'Status',
         'Date Submitted',
       ],
-      rows: filteredIMs.map((im) => {
+      rows: rowsToPrint.map((im) => {
         const supName = resolveRecordSupervisorName(im, teachers, supervisors);
         const mentorName =
           im.mentorName ||
@@ -584,6 +616,7 @@ export const ImsAssessmentsView: React.FC = () => {
           ? `Mentor: ${mentorName}\nSupervisor: ${supName}`
           : `Supervisor: ${supName}`;
         return [
+          normalizeRecordTerm(im.quarterTerm, im.dateSubmitted),
           `${im.materialKind === 'LM' ? 'LM · Learner Material' : 'IM · Instructional'}\n${im.type}`,
           im.title,
           `${im.teacherName}\n${evalText}`,
@@ -612,20 +645,20 @@ export const ImsAssessmentsView: React.FC = () => {
             Instructional Materials (IMs / LMs)
           </h2>
           <p className="text-xs text-stone-600 mt-0.5">
-            DepEd benchmark and quality assuring IMs &amp; LMs with auto-generated PMCF and FAR reports
+            DepEd benchmark and quality assuring IMs &amp; LMs categorized into Term 1, Term 2, and Term 3 with auto-generated PMCF and FAR reports
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleOpenIMModal}
+            onClick={() => handleOpenIMModal()}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Submit IM for Review</span>
           </button>
           <button
-            onClick={handleOpenLMModal}
+            onClick={() => handleOpenLMModal()}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-[#8B2635] hover:bg-[#701628] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -688,157 +721,310 @@ export const ImsAssessmentsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Instructional Materials (IMs Quality Assurance) Table */}
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs">
-          <div className="px-5 py-3.5 bg-stone-50/80 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        {/* Instructional Materials (IMs) & Learners' Materials (LMs) QA Table — Categorized by Term 1, Term 2, Term 3 */}
+        <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs space-y-5">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-stone-200">
             <div>
-              <h3 className="text-sm font-bold text-stone-900">
-                Instructional Materials (IMs) &amp; Learners&apos; Materials (LMs) QA Table
-              </h3>
-              <p className="text-[11px] text-stone-500">
-                Quality Assurance Checklist · MELC Alignment, Content Accuracy &amp; Copyright Compliance
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-stone-900">
+                  Instructional Materials (IMs) &amp; Learners&apos; Materials (LMs) QA Table
+                </h3>
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
+                  {filteredIMs.length} {filteredIMs.length === 1 ? 'Record' : 'Records'}
+                </span>
+              </div>
+              <p className="text-xs text-stone-500 mt-0.5">
+                Categorized into Term 1, Term 2, and Term 3 · Submitting an IM or LM on Term 1 automatically places it in Term 1.
               </p>
             </div>
+
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
-                {filteredIMs.length} {filteredIMs.length === 1 ? 'Record' : 'Records'}
-              </span>
+              <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-lg border border-stone-200">
+                {(
+                  [
+                    { id: 'ALL', label: 'All Terms (Categorized)' },
+                    { id: 'Term 1', label: 'Term 1' },
+                    { id: 'Term 2', label: 'Term 2' },
+                    { id: 'Term 3', label: 'Term 3' },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setSelectedImTermFilter(tab.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                      selectedImTermFilter === tab.id
+                        ? 'bg-[#701628] text-white shadow-2xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
               <button
                 type="button"
-                onClick={handlePrintImsTable}
+                onClick={() => handlePrintImsTable()}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
                 title="Print / Export IMs & LMs QA Table to PDF"
               >
                 <Printer className="w-3.5 h-3.5 text-amber-300" />
-                <span>Print to PDF</span>
+                <span>Print All Terms PDF</span>
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
-                  <th className="py-3 px-4">Kind &amp; Type</th>
-                  <th className="py-3 px-4">Title &amp; Document Link</th>
-                  <th className="py-3 px-4">Author / Teacher</th>
-                  <th className="py-3 px-4">Grade &amp; Subject</th>
-                  <th className="py-3 px-4">QA Checklist</th>
-                  <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Submitted</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-stone-100">
-                {filteredIMs.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-stone-500">
-                      No instructional or learner materials found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredIMs.map((im) => {
-                    const mentorRec = resolveRecordMentor(im, teachers, mentors);
-                    const mentorDisplayName = im.mentorName || (im.evaluatorRole === 'mentor' ? mentorRec?.fullName : undefined);
-                    return (
-                      <tr key={im.id} className="hover:bg-stone-50/80 transition-colors">
-                        <td className="py-3 px-4">
+
+          <div className="space-y-6">
+            {(
+              [
+                {
+                  term: 'Term 1' as SupervisionTerm,
+                  title: "Instructional Materials (IMs) & Learners' Materials (LMs) QA Table — Term 1",
+                  subtitle: 'Term 1 Instructional & Learner Materials Quality Assurance, MELC Alignment & Copyright Review',
+                  badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
+                  headerBg: 'bg-sky-50/50',
+                },
+                {
+                  term: 'Term 2' as SupervisionTerm,
+                  title: "Instructional Materials (IMs) & Learners' Materials (LMs) QA Table — Term 2",
+                  subtitle: 'Term 2 Instructional & Learner Materials Quality Assurance, MELC Alignment & Copyright Review',
+                  badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+                  headerBg: 'bg-amber-50/50',
+                },
+                {
+                  term: 'Term 3' as SupervisionTerm,
+                  title: "Instructional Materials (IMs) & Learners' Materials (LMs) QA Table — Term 3",
+                  subtitle: 'Term 3 Instructional & Learner Materials Quality Assurance, MELC Alignment & Copyright Review',
+                  badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                  headerBg: 'bg-emerald-50/50',
+                },
+              ] as const
+            )
+              .filter(
+                (section) =>
+                  selectedImTermFilter === 'ALL' || selectedImTermFilter === section.term
+              )
+              .map((section) => {
+                const termIMs = filteredIMs.filter(
+                  (im) => normalizeRecordTerm(im.quarterTerm, im.dateSubmitted) === section.term
+                );
+                return (
+                  <div
+                    key={section.term}
+                    className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-2xs"
+                  >
+                    <div
+                      className={`px-4 py-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${section.headerBg}`}
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-sm font-bold text-stone-900">{section.title}</h4>
                           <span
-                            className={`inline-block text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider mb-1 ${
-                              im.materialKind === 'LM'
-                                ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                : 'bg-stone-100 text-stone-700'
-                            }`}
+                            className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${section.badgeClass}`}
                           >
-                            {im.materialKind === 'LM' ? 'LM · Learner Material' : 'IM · Instructional'}
+                            {termIMs.length} {termIMs.length === 1 ? 'Record' : 'Records'}
                           </span>
-                          <div className="text-[11px] text-stone-500 font-medium">{im.type}</div>
-                        </td>
-                        <td className="py-3 px-4 max-w-xs">
-                          <div className="font-bold text-stone-900">{im.title}</div>
-                          {im.fileUrl ? (
-                            <a
-                              href={im.fileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-[#701628] hover:underline mt-1"
-                            >
-                              <ExternalLink className="w-3 h-3" />
-                              <span>Open Document Link</span>
-                            </a>
+                        </div>
+                        <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => handlePrintImsTable(section.term)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-amber-300" />
+                          <span>Print {section.term}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenIMModal(section.term)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white hover:bg-stone-50 text-[#701628] border border-[#701628]/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Submit IM ({section.term})</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLMModal(section.term)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Submit LM ({section.term})</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
+                            <th className="py-3 px-4">Kind &amp; Type</th>
+                            <th className="py-3 px-4">Title &amp; Document Link</th>
+                            <th className="py-3 px-4">Author / Teacher</th>
+                            <th className="py-3 px-4">Grade &amp; Subject</th>
+                            <th className="py-3 px-4">QA Checklist</th>
+                            <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4">Submitted</th>
+                            <th className="py-3 px-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-100">
+                          {termIMs.length === 0 ? (
+                            <tr>
+                              <td colSpan={8} className="py-8 text-center text-stone-500">
+                                No instructional or learner materials submitted for {section.term} yet. Click &ldquo;Submit IM ({section.term})&rdquo; or &ldquo;Submit LM ({section.term})&rdquo; to add one.
+                              </td>
+                            </tr>
                           ) : (
-                            <div className="text-[11px] text-stone-400 italic mt-0.5 line-clamp-1">
-                              {im.evaluatorNotes}
-                            </div>
+                            termIMs.map((im) => {
+                              const mentorRec = resolveRecordMentor(im, teachers, mentors);
+                              const mentorDisplayName =
+                                im.mentorName ||
+                                (im.evaluatorRole === 'mentor' ? mentorRec?.fullName : undefined);
+                              return (
+                                <tr key={im.id} className="hover:bg-stone-50/80 transition-colors">
+                                  <td className="py-3 px-4">
+                                    <div className="flex flex-wrap items-center gap-1 mb-1">
+                                      <span
+                                        className={`inline-block text-[10px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wider ${
+                                          im.materialKind === 'LM'
+                                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                            : 'bg-stone-100 text-stone-700'
+                                        }`}
+                                      >
+                                        {im.materialKind === 'LM'
+                                          ? 'LM · Learner Material'
+                                          : 'IM · Instructional'}
+                                      </span>
+                                      <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded bg-stone-100 text-stone-700 border border-stone-200">
+                                        {normalizeRecordTerm(im.quarterTerm, im.dateSubmitted)}
+                                      </span>
+                                    </div>
+                                    <div className="text-[11px] text-stone-500 font-medium">
+                                      {im.type}
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4 max-w-xs">
+                                    <div className="font-bold text-stone-900">{im.title}</div>
+                                    {im.fileUrl ? (
+                                      <a
+                                        href={im.fileUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-[#701628] hover:underline mt-1"
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                        <span>Open Document Link</span>
+                                      </a>
+                                    ) : (
+                                      <div className="text-[11px] text-stone-400 italic mt-0.5 line-clamp-1">
+                                        {im.evaluatorNotes}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <div className="font-semibold text-stone-800">
+                                      {im.teacherName}
+                                    </div>
+                                    <div className="text-[10px] text-[#701628] font-medium">
+                                      Supervisor:{' '}
+                                      {resolveRecordSupervisorName(im, teachers, supervisors)}
+                                    </div>
+                                    {mentorDisplayName && (
+                                      <div className="text-[10px] text-violet-800 font-semibold">
+                                        Mentor: {mentorDisplayName}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="py-3 px-4 text-stone-700">{im.gradeSubject}</td>
+                                  <td className="py-3 px-4">
+                                    <div className="space-y-0.5 text-[10px]">
+                                      <div
+                                        className={
+                                          im.alignmentToMELC
+                                            ? 'text-emerald-700 font-semibold'
+                                            : 'text-rose-600'
+                                        }
+                                      >
+                                        {im.alignmentToMELC
+                                          ? '✓ MELC Aligned'
+                                          : '✗ MELC Unverified'}
+                                      </div>
+                                      <div
+                                        className={
+                                          im.contentAccuracyVerified
+                                            ? 'text-emerald-700 font-semibold'
+                                            : 'text-rose-600'
+                                        }
+                                      >
+                                        {im.contentAccuracyVerified
+                                          ? '✓ Content Accurate'
+                                          : '✗ Accuracy Pending'}
+                                      </div>
+                                      <div
+                                        className={
+                                          im.copyrightCompliant
+                                            ? 'text-emerald-700 font-semibold'
+                                            : 'text-rose-600'
+                                        }
+                                      >
+                                        {im.copyrightCompliant
+                                          ? '✓ Copyright OK'
+                                          : '⚠ Needs Citation'}
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-3 px-4">
+                                    <span
+                                      className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                        im.status === 'Approved for Use'
+                                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                          : im.status === 'Under Review'
+                                          ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                          : 'bg-rose-50 text-rose-800 border-rose-200'
+                                      }`}
+                                    >
+                                      {im.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-4 text-stone-500 font-mono text-[11px]">
+                                    {im.dateSubmitted}
+                                  </td>
+                                  <td className="py-3 px-4 text-right">
+                                    <div className="inline-flex items-center justify-end gap-1.5">
+                                      {!isTeacher && (
+                                        <button
+                                          onClick={() => openEditIMModal(im)}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                          title="Evaluate / Edit Instructional Material"
+                                        >
+                                          <Pencil className="w-3.5 h-3.5 text-stone-600" />
+                                          <span>Evaluate</span>
+                                        </button>
+                                      )}
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => deleteIMQA(im.id)}
+                                          className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                          title="Delete"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           )}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="font-semibold text-stone-800">{im.teacherName}</div>
-                          <div className="text-[10px] text-[#701628] font-medium">
-                            Supervisor: {resolveRecordSupervisorName(im, teachers, supervisors)}
-                          </div>
-                          {mentorDisplayName && (
-                            <div className="text-[10px] text-violet-800 font-semibold">
-                              Mentor: {mentorDisplayName}
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-3 px-4 text-stone-700">{im.gradeSubject}</td>
-                        <td className="py-3 px-4">
-                          <div className="space-y-0.5 text-[10px]">
-                            <div className={im.alignmentToMELC ? 'text-emerald-700 font-semibold' : 'text-rose-600'}>
-                              {im.alignmentToMELC ? '✓ MELC Aligned' : '✗ MELC Unverified'}
-                            </div>
-                            <div className={im.contentAccuracyVerified ? 'text-emerald-700 font-semibold' : 'text-rose-600'}>
-                              {im.contentAccuracyVerified ? '✓ Content Accurate' : '✗ Accuracy Pending'}
-                            </div>
-                            <div className={im.copyrightCompliant ? 'text-emerald-700 font-semibold' : 'text-rose-600'}>
-                              {im.copyrightCompliant ? '✓ Copyright OK' : '⚠ Needs Citation'}
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span
-                            className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
-                              im.status === 'Approved for Use'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : im.status === 'Under Review'
-                                ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                : 'bg-rose-50 text-rose-800 border-rose-200'
-                            }`}
-                          >
-                            {im.status}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-stone-500 font-mono text-[11px]">{im.dateSubmitted}</td>
-                        <td className="py-3 px-4 text-right">
-                          <div className="inline-flex items-center justify-end gap-1.5">
-                            {!isTeacher && (
-                              <button
-                                onClick={() => openEditIMModal(im)}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                                title="Evaluate / Edit Instructional Material"
-                              >
-                                <Pencil className="w-3.5 h-3.5 text-stone-600" />
-                                <span>Evaluate</span>
-                              </button>
-                            )}
-                            {isAdmin && (
-                              <button
-                                onClick={() => deleteIMQA(im.id)}
-                                className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="Delete"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
 
@@ -1380,19 +1566,34 @@ export const ImsAssessmentsView: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Author / Teacher</label>
-                <select
-                  value={editImTeacherId}
-                  onChange={(e) => setEditImTeacherId(e.target.value)}
-                  className="w-full border border-stone-300 rounded-lg p-2 bg-white"
-                >
-                  {scopedTeachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.fullName} ({t.department})
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Author / Teacher</label>
+                  <select
+                    value={editImTeacherId}
+                    onChange={(e) => setEditImTeacherId(e.target.value)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white"
+                  >
+                    {scopedTeachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.fullName} ({t.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Term (Table Destination)</label>
+                  <select
+                    value={editImQuarterTerm}
+                    onChange={(e) => setEditImQuarterTerm(e.target.value as SupervisionTerm)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white font-semibold"
+                  >
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                  </select>
+                </div>
               </div>
 
               <div className="p-3 bg-stone-50 rounded-lg border border-stone-200 space-y-2">
@@ -1536,20 +1737,35 @@ export const ImsAssessmentsView: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Author / Teacher</label>
-                <select
-                  value={imTeacherId}
-                  onChange={(e) => setImTeacherId(e.target.value)}
-                  disabled={isTeacher}
-                  className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
-                >
-                  {scopedTeachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.fullName} ({t.department})
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Author / Teacher</label>
+                  <select
+                    value={imTeacherId}
+                    onChange={(e) => setImTeacherId(e.target.value)}
+                    disabled={isTeacher}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
+                  >
+                    {scopedTeachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.fullName} ({t.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Term (Table Destination)</label>
+                  <select
+                    value={imQuarterTerm}
+                    onChange={(e) => setImQuarterTerm(e.target.value as SupervisionTerm)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white font-semibold"
+                  >
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                  </select>
+                </div>
               </div>
 
               <div className="p-3 bg-amber-50/70 rounded-lg border border-amber-200">
@@ -1644,20 +1860,35 @@ export const ImsAssessmentsView: React.FC = () => {
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Author / Teacher</label>
-                <select
-                  value={lmTeacherId}
-                  onChange={(e) => setLmTeacherId(e.target.value)}
-                  disabled={isTeacher}
-                  className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
-                >
-                  {scopedTeachers.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.fullName} ({t.department})
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Author / Teacher</label>
+                  <select
+                    value={lmTeacherId}
+                    onChange={(e) => setLmTeacherId(e.target.value)}
+                    disabled={isTeacher}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white disabled:bg-stone-100"
+                  >
+                    {scopedTeachers.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.fullName} ({t.department})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Term (Table Destination)</label>
+                  <select
+                    value={lmQuarterTerm}
+                    onChange={(e) => setLmQuarterTerm(e.target.value as SupervisionTerm)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white font-semibold"
+                  >
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
+                  </select>
+                </div>
               </div>
 
               <div className="p-3 bg-amber-50/70 rounded-lg border border-amber-200">

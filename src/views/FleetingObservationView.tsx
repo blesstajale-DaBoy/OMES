@@ -23,6 +23,8 @@ import {
   resolveRecordSupervisorName,
   resolveActiveSupervisorForUser,
   getScopedTeachersForModal,
+  normalizeRecordTerm,
+  SupervisionTerm,
 } from '../utils/supervisionScope';
 import {
   ClipboardCheck,
@@ -178,7 +180,10 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
   const modalTeachers = scopedTeachers.length > 0 ? scopedTeachers : teachers;
 
   // Fleeting Observation Form State
+  const [selectedFleetingTermFilter, setSelectedFleetingTermFilter] = useState<'ALL' | SupervisionTerm>('ALL');
+  const [selectedClassroomTermFilter, setSelectedClassroomTermFilter] = useState<'ALL' | SupervisionTerm>('ALL');
   const [teacherId, setTeacherId] = useState(teachers[0]?.id || '');
+  const [fleetingQuarterTerm, setFleetingQuarterTerm] = useState<SupervisionTerm>('Term 1');
   const [gradeAndSection, setGradeAndSection] = useState('Grade 9 - Ruby');
   const [subject, setSubject] = useState('Science 9');
   const [durationMinutes, setDurationMinutes] = useState(10);
@@ -424,9 +429,13 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
     );
   });
 
-  const openNewModal = () => {
+  const openNewModal = (defaultTerm?: SupervisionTerm) => {
     setEditingVisit(null);
     setTeacherId(scopedTeachers[0]?.id || teachers[0]?.id || '');
+    setFleetingQuarterTerm(
+      defaultTerm ||
+        (selectedFleetingTermFilter !== 'ALL' ? selectedFleetingTermFilter : 'Term 1')
+    );
     setGradeAndSection('Grade 9 - Ruby');
     setSubject('Science 9');
     setDurationMinutes(10);
@@ -447,6 +456,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
       teachers.find((t) => t.fullName === visit.teacherName) ||
       teachers[0];
     setTeacherId(matchedTeacher?.id || visit.teacherId);
+    setFleetingQuarterTerm(normalizeRecordTerm(visit.quarterTerm, visit.date));
     setGradeAndSection(visit.gradeAndSection);
     setSubject(visit.subject);
     setDurationMinutes(visit.durationMinutes);
@@ -483,6 +493,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         teacherName: teacher ? teacher.fullName : editingVisit.teacherName,
         supervisorId: resolvedSup?.id || editingVisit.supervisorId,
         supervisorName: resolvedSup?.fullName || editingVisit.supervisorName,
+        quarterTerm: fleetingQuarterTerm,
         durationMinutes,
         gradeAndSection,
         subject,
@@ -503,6 +514,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         supervisorId: resolvedSup?.id || currentUser?.id || 'system',
         supervisorName: resolvedSup?.fullName || currentUser?.fullName || 'Instructional Supervisor',
         date: new Date().toISOString().slice(0, 10),
+        quarterTerm: fleetingQuarterTerm,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         durationMinutes,
         gradeAndSection,
@@ -869,7 +881,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         {!isTeacher && (
           <div className="flex flex-wrap items-center gap-2 self-start md:self-auto">
             <button
-              onClick={openNewModal}
+              onClick={() => openNewModal()}
               className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
@@ -942,22 +954,47 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         </div>
       </div>
 
-      {/* Table: Fleeting & Walkthrough Observation Table */}
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 bg-blue-50/70 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Table: Fleeting & Walkthrough Observation Table — Categorized by Term 1, Term 2, Term 3 */}
+      <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-stone-200">
           <div>
-            <h3 className="text-sm font-bold text-stone-900">
-              Fleeting &amp; Walkthrough Observation Table
-            </h3>
-            <p className="text-[11px] text-stone-600">
-              Monitoring Tool On The Fleeting &amp; Walkthrough Observation · Indicators Evaluation Matrix (E=Evident, NE=Not Evident)
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-stone-900">
+                Fleeting &amp; Walkthrough Observation Table
+              </h3>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-blue-100 text-blue-900">
+                {filteredVisits.length} Total {filteredVisits.length === 1 ? 'Record' : 'Records'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-600 mt-0.5">
+              Categorized by Term 1, Term 2, and Term 3 · Monitoring Tool On The Fleeting &amp; Walkthrough Observation (E=Evident, NE=Not Evident)
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-blue-100 text-blue-900">
-              {filteredVisits.length}{' '}
-              {filteredVisits.length === 1 ? 'Record' : 'Records'}
-            </span>
+            <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-lg border border-stone-200">
+              {(
+                [
+                  { id: 'ALL', label: 'All Terms (Categorized)' },
+                  { id: 'Term 1', label: 'Term 1' },
+                  { id: 'Term 2', label: 'Term 2' },
+                  { id: 'Term 3', label: 'Term 3' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSelectedFleetingTermFilter(tab.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    selectedFleetingTermFilter === tab.id
+                      ? 'bg-[#701628] text-white shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
               onClick={handlePrintWalkthroughTable}
@@ -970,7 +1007,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
             {!isTeacher && (
               <button
                 type="button"
-                onClick={openNewModal}
+                onClick={() => openNewModal()}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
@@ -979,166 +1016,242 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
             )}
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">Visit Code</th>
-                <th className="py-3 px-4">Teacher</th>
-                <th className="py-3 px-4">Subject &amp; Section</th>
-                <th className="py-3 px-4">Pulse Parameters</th>
-                <th className="py-3 px-4">Monitoring Tool Indicators (E / NE)</th>
-                <th className="py-3 px-4">Evaluation Status</th>
-                <th className="py-3 px-4">Commendation &amp; Coaching Tip</th>
-                <th className="py-3 px-4">Observer &amp; Date</th>
-                {!isTeacher && <th className="py-3 px-4 text-right">Actions</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {filteredVisits.length === 0 ? (
-                <tr>
-                  <td colSpan={isTeacher ? 8 : 9} className="py-8 text-center text-stone-500">
-                    No Fleeting &amp; Walkthrough Observation records yet. Click &ldquo;Log Fleeting/Walkthrough Visit&rdquo; to add a record.
-                  </td>
-                </tr>
-              ) : (
-                filteredVisits.map((v) => {
-                  const ratingsMap = {
-                    ...DEFAULT_FLEETING_MONITORING_RATINGS,
-                    ...(v.monitoringRatings || {}),
-                  };
-                  const indicatorKeys = Object.keys(DEFAULT_FLEETING_MONITORING_RATINGS);
-                  const evidentCount = indicatorKeys.filter(
-                    (k) => ratingsMap[k] === 'E'
-                  ).length;
-                  const notEvidentCount = indicatorKeys.filter(
-                    (k) => ratingsMap[k] === 'NE'
-                  ).length;
-                  const isEvidentOverall = evidentCount >= 5;
 
-                  return (
-                    <tr key={v.id} className="hover:bg-stone-50/80 transition-colors">
-                      <td className="py-3 px-4">
-                        <span className="font-mono font-bold text-xs text-[#701628] bg-stone-100 px-2 py-0.5 rounded">
-                          {v.visitCode}
-                        </span>
-                        <div className="flex items-center gap-1 text-[11px] text-stone-500 mt-1">
-                          <Clock className="w-3 h-3 text-stone-400" />
-                          <span>{v.durationMinutes} min visit</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 font-bold text-stone-900">{v.teacherName}</td>
-                      <td className="py-3 px-4 text-stone-700">
-                        <div className="font-semibold">{v.subject}</div>
-                        <div className="text-[11px] text-stone-500">{v.gradeAndSection}</div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="space-y-0.5 text-[11px]">
-                          <div>
-                            <span className="text-stone-400">Engagement: </span>
-                            <span className="font-semibold text-emerald-700">
-                              {v.learnerEngagementLevel}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-stone-400">Climate: </span>
-                            <span className="font-semibold text-stone-700">
-                              {v.classroomAtmosphere}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-stone-400">Board / Time: </span>
-                            <span className="font-semibold text-stone-700">
-                              {v.boardWorkQuality} · {v.timeOnTask}
-                            </span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-1.5 font-mono font-bold text-xs mb-1.5">
-                          <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
-                            E: {evidentCount}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
-                            NE: {notEvidentCount}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap gap-1 max-w-[210px]">
-                          {indicatorKeys.map((key) => {
-                            const status = ratingsMap[key];
-                            return (
-                              <span
-                                key={key}
-                                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
-                                  status === 'E'
-                                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                    : 'bg-rose-50 text-rose-800 border-rose-200'
-                                }`}
-                                title={`Indicator ${key}: ${status === 'E' ? 'Evident' : 'Not Evident'}`}
-                              >
-                                {key}:{status}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
+        <div className="space-y-6">
+          {(
+            [
+              {
+                term: 'Term 1' as SupervisionTerm,
+                title: 'Fleeting & Walkthrough Observation Table — Term 1',
+                subtitle: 'First Term 5–15 Minute Rapid Classroom Walkthroughs & Indicator Checks',
+                badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
+                headerBg: 'bg-sky-50/50',
+              },
+              {
+                term: 'Term 2' as SupervisionTerm,
+                title: 'Fleeting & Walkthrough Observation Table — Term 2',
+                subtitle: 'Second Term 5–15 Minute Rapid Classroom Walkthroughs & Indicator Checks',
+                badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+                headerBg: 'bg-amber-50/50',
+              },
+              {
+                term: 'Term 3' as SupervisionTerm,
+                title: 'Fleeting & Walkthrough Observation Table — Term 3',
+                subtitle: 'Third Term 5–15 Minute Rapid Classroom Walkthroughs & Indicator Checks',
+                badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                headerBg: 'bg-emerald-50/50',
+              },
+            ] as const
+          )
+            .filter(
+              (section) =>
+                selectedFleetingTermFilter === 'ALL' ||
+                selectedFleetingTermFilter === section.term
+            )
+            .map((section) => {
+              const termVisits = filteredVisits.filter(
+                (v) => normalizeRecordTerm(v.quarterTerm, v.date) === section.term
+              );
+
+              return (
+                <div
+                  key={section.term}
+                  className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-2xs"
+                >
+                  <div
+                    className={`px-4 py-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${section.headerBg}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-stone-900">{section.title}</h4>
                         <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
-                            isEvidentOverall
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-rose-50 text-rose-800 border-rose-200'
-                          }`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${section.badgeClass}`}
                         >
-                          {isEvidentOverall ? 'Evident' : 'Not Evident'}
+                          {termVisits.length} {termVisits.length === 1 ? 'Record' : 'Records'}
                         </span>
-                      </td>
-                      <td className="py-3 px-4 max-w-xs">
-                        <div className="text-[11px] text-emerald-900 line-clamp-2">
-                          <span className="font-bold text-emerald-700">Commendation: </span>
-                          {v.rapidCommendation}
-                        </div>
-                        <div className="text-[11px] text-amber-900 line-clamp-2 mt-1">
-                          <span className="font-bold text-amber-700">Coaching Tip: </span>
-                          {v.quickCoachingTip}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-[11px] text-stone-600">
-                        <div className="font-semibold text-stone-800">
-                          {resolveRecordSupervisorName(v, teachers, supervisors)}
-                        </div>
-                        <div className="font-mono text-stone-400">
-                          {v.date} {v.time ? `· ${v.time}` : ''}
-                        </div>
-                      </td>
-                      {!isTeacher && (
-                        <td className="py-3 px-4 text-right">
-                          <div className="inline-flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => openEditModal(v)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                              title="Edit Walkthrough Record"
-                            >
-                              <Pencil className="w-3.5 h-3.5 text-stone-600" />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              onClick={() => deleteFleetingObservation(v.id)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
-                              title="Delete Walkthrough Record"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Delete</span>
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
+                    </div>
+                    {!isTeacher && (
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => openNewModal(section.term)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-blue-800 border border-blue-700/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Log Walkthrough ({section.term})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
+                          <th className="py-3 px-4">Visit Code &amp; Term</th>
+                          <th className="py-3 px-4">Teacher</th>
+                          <th className="py-3 px-4">Subject &amp; Section</th>
+                          <th className="py-3 px-4">Pulse Parameters</th>
+                          <th className="py-3 px-4">Monitoring Tool Indicators (E / NE)</th>
+                          <th className="py-3 px-4">Evaluation Status</th>
+                          <th className="py-3 px-4">Commendation &amp; Coaching Tip</th>
+                          <th className="py-3 px-4">Observer &amp; Date</th>
+                          {!isTeacher && <th className="py-3 px-4 text-right">Actions</th>}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {termVisits.length === 0 ? (
+                          <tr>
+                            <td colSpan={isTeacher ? 8 : 9} className="py-8 text-center text-stone-400">
+                              No Fleeting &amp; Walkthrough Observation records for {section.term} yet. Click &ldquo;Log Walkthrough ({section.term})&rdquo; to add a record.
+                            </td>
+                          </tr>
+                        ) : (
+                          termVisits.map((v) => {
+                            const ratingsMap = {
+                              ...DEFAULT_FLEETING_MONITORING_RATINGS,
+                              ...(v.monitoringRatings || {}),
+                            };
+                            const indicatorKeys = Object.keys(DEFAULT_FLEETING_MONITORING_RATINGS);
+                            const evidentCount = indicatorKeys.filter(
+                              (k) => ratingsMap[k] === 'E'
+                            ).length;
+                            const notEvidentCount = indicatorKeys.filter(
+                              (k) => ratingsMap[k] === 'NE'
+                            ).length;
+                            const isEvidentOverall = evidentCount >= 5;
+
+                            return (
+                              <tr key={v.id} className="hover:bg-stone-50/80 transition-colors">
+                                <td className="py-3 px-4">
+                                  <span className="font-mono font-bold text-xs text-[#701628] bg-stone-100 px-2 py-0.5 rounded">
+                                    {v.visitCode}
+                                  </span>
+                                  <div className="flex items-center gap-1 text-[11px] text-stone-500 mt-1">
+                                    <Clock className="w-3 h-3 text-stone-400" />
+                                    <span>
+                                      {v.durationMinutes} min · {section.term}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 font-bold text-stone-900">{v.teacherName}</td>
+                                <td className="py-3 px-4 text-stone-700">
+                                  <div className="font-semibold">{v.subject}</div>
+                                  <div className="text-[11px] text-stone-500">{v.gradeAndSection}</div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="space-y-0.5 text-[11px]">
+                                    <div>
+                                      <span className="text-stone-400">Engagement: </span>
+                                      <span className="font-semibold text-emerald-700">
+                                        {v.learnerEngagementLevel}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-stone-400">Climate: </span>
+                                      <span className="font-semibold text-stone-700">
+                                        {v.classroomAtmosphere}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-stone-400">Board / Time: </span>
+                                      <span className="font-semibold text-stone-700">
+                                        {v.boardWorkQuality} · {v.timeOnTask}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="flex items-center gap-1.5 font-mono font-bold text-xs mb-1.5">
+                                    <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                      E: {evidentCount}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                                      NE: {notEvidentCount}
+                                    </span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1 max-w-[210px]">
+                                    {indicatorKeys.map((key) => {
+                                      const status = ratingsMap[key];
+                                      return (
+                                        <span
+                                          key={key}
+                                          className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                                            status === 'E'
+                                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                              : 'bg-rose-50 text-rose-800 border-rose-200'
+                                          }`}
+                                          title={`Indicator ${key}: ${status === 'E' ? 'Evident' : 'Not Evident'}`}
+                                        >
+                                          {key}:{status}
+                                        </span>
+                                      );
+                                    })}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <span
+                                    className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                      isEvidentOverall
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : 'bg-rose-50 text-rose-800 border-rose-200'
+                                    }`}
+                                  >
+                                    {isEvidentOverall ? 'Evident' : 'Not Evident'}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 max-w-xs">
+                                  <div className="text-[11px] text-emerald-900 line-clamp-2">
+                                    <span className="font-bold text-emerald-700">Commendation: </span>
+                                    {v.rapidCommendation}
+                                  </div>
+                                  <div className="text-[11px] text-amber-900 line-clamp-2 mt-1">
+                                    <span className="font-bold text-amber-700">Coaching Tip: </span>
+                                    {v.quickCoachingTip}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4 text-[11px] text-stone-600">
+                                  <div className="font-semibold text-stone-800">
+                                    {resolveRecordSupervisorName(v, teachers, supervisors)}
+                                  </div>
+                                  <div className="font-mono text-stone-400">
+                                    {v.date} {v.time ? `· ${v.time}` : ''}
+                                  </div>
+                                </td>
+                                {!isTeacher && (
+                                  <td className="py-3 px-4 text-right">
+                                    <div className="inline-flex items-center justify-end gap-1.5">
+                                      <button
+                                        onClick={() => openEditModal(v)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                        title="Edit Walkthrough Record"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5 text-stone-600" />
+                                        <span>Edit</span>
+                                      </button>
+                                      <button
+                                        onClick={() => deleteFleetingObservation(v.id)}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg text-[11px] font-bold transition-colors cursor-pointer"
+                                        title="Delete Walkthrough Record"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                        <span>Delete</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </div>
 
@@ -1604,22 +1717,48 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
         </div>
       </div>
 
-      {/* Table: Conduct New Classroom Observation Table */}
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 bg-amber-50/70 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Table: Conduct New Classroom Observation Table — Categorized by Term 1, Term 2, Term 3 */}
+      <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-stone-200">
           <div>
-            <h3 className="text-sm font-bold text-stone-900">
-              Conduct New Classroom Observation Table
-            </h3>
-            <p className="text-[11px] text-stone-600">
-              Monitoring Tool On The Conduct Of Classroom Observations · Indicators Evaluation Matrix (E=Evident, NE=Not Evident)
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-stone-900">
+                Conduct New Classroom Observation Table
+              </h3>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-200/80 text-stone-900">
+                {classroomMonitoringObservations.length} Total{' '}
+                {classroomMonitoringObservations.length === 1 ? 'Record' : 'Records'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-600 mt-0.5">
+              Categorized by Term 1, Term 2, and Term 3 · Monitoring Tool On The Conduct Of Classroom Observations (E=Evident, NE=Not Evident)
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-200/80 text-stone-900">
-              {classroomMonitoringObservations.length}{' '}
-              {classroomMonitoringObservations.length === 1 ? 'Record' : 'Records'}
-            </span>
+            <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-lg border border-stone-200">
+              {(
+                [
+                  { id: 'ALL', label: 'All Terms (Categorized)' },
+                  { id: 'Term 1', label: 'Term 1' },
+                  { id: 'Term 2', label: 'Term 2' },
+                  { id: 'Term 3', label: 'Term 3' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSelectedClassroomTermFilter(tab.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    selectedClassroomTermFilter === tab.id
+                      ? 'bg-[#701628] text-white shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
               onClick={() => setIsExportClassroomPdfOpen(true)}
@@ -1632,111 +1771,187 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">Observation Code</th>
-                <th className="py-3 px-4">Date & Time</th>
-                <th className="py-3 px-4">Teacher Observed</th>
-                <th className="py-3 px-4">Subject & Section</th>
-                <th className="py-3 px-4">Assigned Instructional Supervisor</th>
-                <th className="py-3 px-4 text-center">Live Indicator (E / NE)</th>
-                <th className="py-3 px-4">Evaluation Status</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {classroomMonitoringObservations.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-stone-500">
-                    No Classroom Observation records yet. Click &ldquo;Conduct New Classroom Observation&rdquo; above to add a record.
-                  </td>
-                </tr>
-              ) : (
-                classroomMonitoringObservations.map((obs) => {
-                  const evidentCount = obs.ratings.filter(
-                    (r) => (r.evidentStatus || (r.score >= 5 ? 'E' : 'NE')) === 'E'
-                  ).length;
-                  const notEvidentCount = obs.ratings.filter(
-                    (r) => (r.evidentStatus || (r.score >= 5 ? 'E' : 'NE')) === 'NE'
-                  ).length;
-                  const isEvidentStatus = obs.overallRating !== 'Not Evident';
+        <div className="space-y-6">
+          {(
+            [
+              {
+                term: 'Term 1' as SupervisionTerm,
+                title: 'Conduct New Classroom Observation Table — Term 1',
+                subtitle: 'First Term Classroom Observations & STAR Indicator Matrix (E / NE)',
+                badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
+                headerBg: 'bg-sky-50/50',
+              },
+              {
+                term: 'Term 2' as SupervisionTerm,
+                title: 'Conduct New Classroom Observation Table — Term 2',
+                subtitle: 'Second Term Classroom Observations & STAR Indicator Matrix (E / NE)',
+                badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+                headerBg: 'bg-amber-50/50',
+              },
+              {
+                term: 'Term 3' as SupervisionTerm,
+                title: 'Conduct New Classroom Observation Table — Term 3',
+                subtitle: 'Third Term Classroom Observations & STAR Indicator Matrix (E / NE)',
+                badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                headerBg: 'bg-emerald-50/50',
+              },
+            ] as const
+          )
+            .filter(
+              (section) =>
+                selectedClassroomTermFilter === 'ALL' ||
+                selectedClassroomTermFilter === section.term
+            )
+            .map((section) => {
+              const termObs = classroomMonitoringObservations.filter(
+                (obs) => normalizeRecordTerm(obs.quarterTerm, obs.date) === section.term
+              );
 
-                  return (
-                    <tr key={obs.id} className="hover:bg-stone-50/80 transition-colors">
-                      <td className="py-3 px-4 font-mono font-bold text-[#701628]">
-                        {obs.observationNo}
-                      </td>
-                      <td className="py-3 px-4 text-stone-700">
-                        <div>{obs.date}</div>
-                        <div className="text-[10px] text-stone-400">
-                          {obs.timeStart} - {obs.timeEnd}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-stone-900">{obs.teacherName}</div>
-                        <div className="text-[11px] text-stone-500">{obs.department}</div>
-                      </td>
-                      <td className="py-3 px-4 text-stone-700">
-                        <div className="font-medium">{obs.subjectTaught}</div>
-                        <div className="text-[11px] text-stone-500">{obs.gradeAndSection}</div>
-                      </td>
-                      <td className="py-3 px-4 text-stone-700">
-                        <div className="font-medium">
-                          {resolveRecordSupervisorName(obs, teachers, supervisors)}
-                        </div>
-                        <div className="text-[10px] text-stone-400">{obs.quarterTerm}</div>
-                      </td>
-                      <td className="py-3 px-4 text-center font-mono font-bold text-xs text-stone-900">
-                        <span className="inline-flex items-center gap-1.5">
-                          <span className="px-2 py-0.5 rounded bg-[#701628]/10 text-[#701628]">
-                            E: {evidentCount}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700">
-                            NE: {notEvidentCount}
-                          </span>
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
+              return (
+                <div
+                  key={section.term}
+                  className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-2xs"
+                >
+                  <div
+                    className={`px-4 py-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${section.headerBg}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-stone-900">{section.title}</h4>
                         <span
-                          className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
-                            isEvidentStatus
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-rose-50 text-rose-800 border-rose-200'
-                          }`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${section.badgeClass}`}
                         >
-                          {obs.overallRating}
+                          {termObs.length} {termObs.length === 1 ? 'Record' : 'Records'}
                         </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {onSelectObservationForPrint && (
-                            <button
-                              onClick={() => onSelectObservationForPrint(obs.id)}
-                              className="p-1.5 text-stone-700 hover:text-[#701628] hover:bg-stone-100 rounded transition-colors"
-                              title="Print Monitoring Tool Sheet"
-                            >
-                              <Printer className="w-4 h-4" />
-                            </button>
-                          )}
-                          {isAdmin && (
-                            <button
-                              onClick={() => deleteObservation(obs.id)}
-                              className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                              title="Delete Record"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
+                    </div>
+                    {!isTeacher && (
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setObsQuarterTerm(section.term);
+                            setIsClassroomObsModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-[#701628] border border-[#701628]/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Conduct Classroom Observation ({section.term})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
+                          <th className="py-3 px-4">Observation Code</th>
+                          <th className="py-3 px-4">Date &amp; Time</th>
+                          <th className="py-3 px-4">Teacher Observed</th>
+                          <th className="py-3 px-4">Subject &amp; Section</th>
+                          <th className="py-3 px-4">Assigned Instructional Supervisor</th>
+                          <th className="py-3 px-4 text-center">Live Indicator (E / NE)</th>
+                          <th className="py-3 px-4">Evaluation Status</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {termObs.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                              No Classroom Observation records for {section.term} yet. Click &ldquo;Conduct Classroom Observation ({section.term})&rdquo; to add a record.
+                            </td>
+                          </tr>
+                        ) : (
+                          termObs.map((obs) => {
+                            const evidentCount = obs.ratings.filter(
+                              (r) => (r.evidentStatus || (r.score >= 5 ? 'E' : 'NE')) === 'E'
+                            ).length;
+                            const notEvidentCount = obs.ratings.filter(
+                              (r) => (r.evidentStatus || (r.score >= 5 ? 'E' : 'NE')) === 'NE'
+                            ).length;
+                            const isEvidentStatus = obs.overallRating !== 'Not Evident';
+
+                            return (
+                              <tr key={obs.id} className="hover:bg-stone-50/80 transition-colors">
+                                <td className="py-3 px-4 font-mono font-bold text-[#701628]">
+                                  {obs.observationNo}
+                                </td>
+                                <td className="py-3 px-4 text-stone-700">
+                                  <div>{obs.date}</div>
+                                  <div className="text-[10px] text-stone-400">
+                                    {obs.timeStart} - {obs.timeEnd}
+                                  </div>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <div className="font-bold text-stone-900">{obs.teacherName}</div>
+                                  <div className="text-[11px] text-stone-500">{obs.department}</div>
+                                </td>
+                                <td className="py-3 px-4 text-stone-700">
+                                  <div className="font-medium">{obs.subjectTaught}</div>
+                                  <div className="text-[11px] text-stone-500">{obs.gradeAndSection}</div>
+                                </td>
+                                <td className="py-3 px-4 text-stone-700">
+                                  <div className="font-medium">
+                                    {resolveRecordSupervisorName(obs, teachers, supervisors)}
+                                  </div>
+                                  <div className="text-[10px] text-stone-400">{section.term}</div>
+                                </td>
+                                <td className="py-3 px-4 text-center font-mono font-bold text-xs text-stone-900">
+                                  <span className="inline-flex items-center gap-1.5">
+                                    <span className="px-2 py-0.5 rounded bg-[#701628]/10 text-[#701628]">
+                                      E: {evidentCount}
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700">
+                                      NE: {notEvidentCount}
+                                    </span>
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4">
+                                  <span
+                                    className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded border ${
+                                      isEvidentStatus
+                                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                        : 'bg-rose-50 text-rose-800 border-rose-200'
+                                    }`}
+                                  >
+                                    {obs.overallRating}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    {onSelectObservationForPrint && (
+                                      <button
+                                        onClick={() => onSelectObservationForPrint(obs.id)}
+                                        className="p-1.5 text-stone-700 hover:text-[#701628] hover:bg-stone-100 rounded transition-colors"
+                                        title="Print Monitoring Tool Sheet"
+                                      >
+                                        <Printer className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => deleteObservation(obs.id)}
+                                        className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                        title="Delete Record"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </div>
 
@@ -2091,7 +2306,7 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
 
             <form onSubmit={handleSave} className="p-6 overflow-y-auto space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
+                <div>
                   <label className="block font-bold text-stone-700 mb-1">Teacher</label>
                   <select
                     value={teacherId}
@@ -2103,6 +2318,19 @@ export const FleetingObservationView: React.FC<FleetingObservationViewProps> = (
                         {t.fullName} ({t.department})
                       </option>
                     ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-stone-700 mb-1">Term</label>
+                  <select
+                    value={fleetingQuarterTerm}
+                    onChange={(e) => setFleetingQuarterTerm(e.target.value as SupervisionTerm)}
+                    className="w-full border border-stone-300 rounded-lg p-2 bg-white font-semibold"
+                  >
+                    <option value="Term 1">Term 1</option>
+                    <option value="Term 2">Term 2</option>
+                    <option value="Term 3">Term 3</option>
                   </select>
                 </div>
 

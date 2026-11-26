@@ -28,6 +28,7 @@ import {
   resolveActiveMentorForUser,
   resolveActiveTeacherForUser,
   getScopedTeachersForModal,
+  normalizeRecordTerm,
 } from '../utils/supervisionScope';
 import { printTableReportToPdf } from '../utils/printTablePdf';
 import {
@@ -1000,12 +1001,12 @@ export const FarPmcfView: React.FC = () => {
 
   const handlePrintFormativeTable = (termFilter?: FormativeTerm) => {
     const rowsToPrint = scopedFormativeRecords.filter(
-      (r) => !termFilter || r.term === termFilter
+      (r) => !termFilter || normalizeRecordTerm(r.term, r.date) === termFilter
     );
     printTableReportToPdf({
       title: termFilter
-        ? `Formative Assessment Table — ${termFilter}`
-        : 'Formative Assessment Menu & Consolidated Term Tables',
+        ? `Table for Formative — ${termFilter}`
+        : 'Table for Formative (Term 1, Term 2, Term 3)',
       subtitle: 'Daily & Weekly Formative Mastery Tracking',
       schoolName: schoolProfile.schoolName,
       schoolId: schoolProfile.schoolId,
@@ -1022,7 +1023,7 @@ export const FarPmcfView: React.FC = () => {
       ],
       rows: rowsToPrint.map((item) => [
         `${item.code}\n${item.date}`,
-        item.term,
+        normalizeRecordTerm(item.term, item.date),
         `${item.teacherName}\n${
           item.evaluatorRole === 'mentor' && item.mentorName
             ? `Mentor: ${item.mentorName}`
@@ -1038,12 +1039,12 @@ export const FarPmcfView: React.FC = () => {
 
   const handlePrintSummativeTable = (termFilter?: SummativeTerm) => {
     const rowsToPrint = scopedSummativeRecords.filter(
-      (r) => !termFilter || r.term === termFilter
+      (r) => !termFilter || normalizeRecordTerm(r.term, r.date) === termFilter
     );
     printTableReportToPdf({
       title: termFilter
-        ? `Summative Assessment Table — ${termFilter}`
-        : 'Summative Assessment Menu & Consolidated Term Tables',
+        ? `Table of Summative — ${termFilter}`
+        : 'Table of Summative (Term 1, Term 2, Term 3)',
       subtitle: 'TOS Verification, Cognitive Domains & Quarterly Summative MPS',
       schoolName: schoolProfile.schoolName,
       schoolId: schoolProfile.schoolId,
@@ -1461,7 +1462,7 @@ export const FarPmcfView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-stone-900">
-                  Formative Assessment Menu & Term Tables
+                  Table for Formative (Categorized into Term 1, Term 2, Term 3)
                 </h3>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-900">
                   {scopedFormativeRecords.length} Total Formative Records
@@ -1478,10 +1479,10 @@ export const FarPmcfView: React.FC = () => {
               <Filter className="w-3.5 h-3.5 text-stone-500 ml-1.5 mr-0.5" />
               {(
                 [
-                  { id: 'ALL', label: 'All Terms (Separated)' },
-                  { id: 'Term 1', label: 'Formative Term 1' },
-                  { id: 'Term 2', label: 'Formative Term 2' },
-                  { id: 'Term 3', label: 'Formative Term 3 (End of Term)' },
+                  { id: 'ALL', label: 'All Terms (Categorized)' },
+                  { id: 'Term 1', label: 'Term 1' },
+                  { id: 'Term 2', label: 'Term 2' },
+                  { id: 'Term 3', label: 'Term 3' },
                 ] as const
               ).map((tab) => (
                 <button
@@ -1526,21 +1527,21 @@ export const FarPmcfView: React.FC = () => {
             [
               {
                 term: 'Term 1' as FormativeTerm,
-                title: 'Table for Formative Term 1',
+                title: 'Table for Formative — Term 1',
                 subtitle: 'First Term Formative Checks, Quizzes, Seatworks, and Competency Mastery Tracking',
                 badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
                 headerBg: 'bg-sky-50/50',
               },
               {
                 term: 'Term 2' as FormativeTerm,
-                title: 'Table for Formative Term 2',
+                title: 'Table for Formative — Term 2',
                 subtitle: 'Second Term Formative Checks, Performance Tasks, and Mid-Year Mastery Tracking',
                 badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
                 headerBg: 'bg-amber-50/50',
               },
               {
                 term: 'Term 3' as FormativeTerm,
-                title: 'Table for Formative Term 3 (End of Term Assessment)',
+                title: 'Table for Formative — Term 3 (End of Term Assessment)',
                 subtitle: 'Third Term & End of Term Integrative Formative Assessments and Mastery Validation',
                 badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
                 headerBg: 'bg-emerald-50/50',
@@ -1550,7 +1551,7 @@ export const FarPmcfView: React.FC = () => {
             .filter((section) => selectedFormativeTermFilter === 'ALL' || selectedFormativeTermFilter === section.term)
             .map((section) => {
               const termRecords = scopedFormativeRecords.filter((r) => {
-                if (r.term !== section.term) return false;
+                if (normalizeRecordTerm(r.term, r.date) !== section.term) return false;
                 if (!searchQuery.trim()) return true;
                 const q = searchQuery.toLowerCase();
                 const supName = resolveRecordSupervisorName(r, teachers, supervisors);
@@ -1754,7 +1755,7 @@ export const FarPmcfView: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-base font-bold text-stone-900">
-                  Summative Assessment Menu & Term Tables
+                  Table of Summative (Categorized into Term 1, Term 2, Term 3)
                 </h3>
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-teal-100 text-teal-900">
                   {scopedSummativeRecords.length} Total Summative Records
@@ -1771,10 +1772,10 @@ export const FarPmcfView: React.FC = () => {
               <Filter className="w-3.5 h-3.5 text-stone-500 ml-1.5 mr-0.5" />
               {(
                 [
-                  { id: 'ALL', label: 'All Terms (Separated)' },
-                  { id: 'Term 1', label: 'Summative Term 1' },
-                  { id: 'Term 2', label: 'Summative Term 2' },
-                  { id: 'Term 3', label: 'Summative Term 3 (End of Term)' },
+                  { id: 'ALL', label: 'All Terms (Categorized)' },
+                  { id: 'Term 1', label: 'Term 1' },
+                  { id: 'Term 2', label: 'Term 2' },
+                  { id: 'Term 3', label: 'Term 3' },
                 ] as const
               ).map((tab) => (
                 <button
@@ -1819,21 +1820,21 @@ export const FarPmcfView: React.FC = () => {
             [
               {
                 term: 'Term 1' as SummativeTerm,
-                title: 'Table for Summative Term 1',
+                title: 'Table of Summative — Term 1',
                 subtitle: 'First Term Summative Tests, TOS & Answer Key Verification, and MPS Mastery Tracking',
                 badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
                 headerBg: 'bg-sky-50/50',
               },
               {
                 term: 'Term 2' as SummativeTerm,
-                title: 'Table for Summative Term 2',
+                title: 'Table of Summative — Term 2',
                 subtitle: 'Second Term Summative Examinations, Cognitive Domain Alignment, and Mid-Year MPS Tracking',
                 badgeClass: 'bg-teal-50 text-teal-800 border-teal-200',
                 headerBg: 'bg-teal-50/50',
               },
               {
                 term: 'Term 3' as SummativeTerm,
-                title: 'Table for Summative Term 3 (End of Term Assessment)',
+                title: 'Table of Summative — Term 3 (End of Term Assessment)',
                 subtitle: 'Third Term & End of Term Summative Assessments, Final TOS QA, and Year-End MPS Validation',
                 badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
                 headerBg: 'bg-emerald-50/50',
@@ -1843,7 +1844,7 @@ export const FarPmcfView: React.FC = () => {
             .filter((section) => selectedSummativeTermFilter === 'ALL' || selectedSummativeTermFilter === section.term)
             .map((section) => {
               const termRecords = scopedSummativeRecords.filter((r) => {
-                if (r.term !== section.term) return false;
+                if (normalizeRecordTerm(r.term, r.date) !== section.term) return false;
                 if (!searchQuery.trim()) return true;
                 const q = searchQuery.toLowerCase();
                 const supName = resolveRecordSupervisorName(r, teachers, supervisors);

@@ -13,6 +13,8 @@ import {
   resolveRecordSupervisorName,
   resolveActiveSupervisorForUser,
   getScopedTeachersForModal,
+  normalizeRecordTerm,
+  SupervisionTerm,
 } from '../utils/supervisionScope';
 import {
   ClipboardCheck,
@@ -334,7 +336,9 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
       selectedGradeLevel === 'All' ||
       obs.gradeAndSection.toLowerCase().includes(selectedGradeLevel.toLowerCase());
     const matchesDept = selectedDepartment === 'All' || obs.department === selectedDepartment;
-    const matchesTerm = selectedTerm === 'All' || obs.quarterTerm === selectedTerm;
+    const matchesTerm =
+      selectedTerm === 'All' ||
+      normalizeRecordTerm(obs.quarterTerm, obs.date) === selectedTerm;
     return matchesSearch && matchesTeacher && matchesGrade && matchesDept && matchesTerm;
   });
 
@@ -824,21 +828,47 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
         </div>
       </div>
 
-      {/* Table 1: COT-PMES Observation Records Table */}
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 bg-stone-50/80 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Table 1: Conduct New COT-PMES Observation Table — Categorized by Term 1, Term 2, Term 3 */}
+      <div className="bg-white rounded-xl border border-stone-200 p-5 shadow-xs space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-stone-200">
           <div>
-            <h3 className="text-sm font-bold text-stone-900">
-              Conduct New COT-PMES Observation Table
-            </h3>
-            <p className="text-[11px] text-stone-500">
-              Philippine Professional Standards for Teachers · 9 Core Indicators (Scale: 3 to 7)
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-stone-900">
+                Conduct New COT-PMES Observation Table
+              </h3>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
+                {cotPmesObservations.length} Total {cotPmesObservations.length === 1 ? 'Record' : 'Records'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Categorized by Term 1, Term 2, and Term 3 · Philippine Professional Standards for Teachers · 9 Core Indicators (Scale: 3 to 7)
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
-              {cotPmesObservations.length} {cotPmesObservations.length === 1 ? 'Record' : 'Records'}
-            </span>
+            <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-lg border border-stone-200">
+              {(
+                [
+                  { id: 'All', label: 'All Terms (Categorized)' },
+                  { id: 'Term 1', label: 'Term 1' },
+                  { id: 'Term 2', label: 'Term 2' },
+                  { id: 'Term 3', label: 'Term 3' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSelectedTerm(tab.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    selectedTerm === tab.id
+                      ? 'bg-[#701628] text-white shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
               onClick={() => setIsExportClassroomPdfOpen(true)}
@@ -851,86 +881,160 @@ export const CotObservationView: React.FC<CotObservationViewProps> = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
-                <th className="py-3 px-4">COT Code</th>
-                <th className="py-3 px-4">Date & Time</th>
-                <th className="py-3 px-4">Teacher Observed</th>
-                <th className="py-3 px-4">Subject & Section</th>
-                <th className="py-3 px-4">Assigned Instructional Supervisor</th>
-                <th className="py-3 px-4 text-center">Score (Scale 3-7)</th>
-                <th className="py-3 px-4">DepEd Rating</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {cotPmesObservations.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-stone-500">
-                    No COT-PMES observation records found matching criteria.
-                  </td>
-                </tr>
-              ) : (
-                cotPmesObservations.map((obs) => (
-                  <tr key={obs.id} className="hover:bg-stone-50/80 transition-colors">
-                    <td className="py-3 px-4 font-mono font-bold text-[#701628]">
-                      {obs.observationNo}
-                    </td>
-                    <td className="py-3 px-4 text-stone-700">
-                      <div>{obs.date}</div>
-                      <div className="text-[10px] text-stone-400">
-                        {obs.timeStart} - {obs.timeEnd}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-stone-900">{obs.teacherName}</div>
-                      <div className="text-[11px] text-stone-500">{obs.department}</div>
-                    </td>
-                    <td className="py-3 px-4 text-stone-700">
-                      <div className="font-medium">{obs.subjectTaught}</div>
-                      <div className="text-[11px] text-stone-500">{obs.gradeAndSection}</div>
-                    </td>
-                    <td className="py-3 px-4 text-stone-700">
-                      <div className="font-medium">
-                        {resolveRecordSupervisorName(obs, teachers, supervisors)}
-                      </div>
-                      <div className="text-[10px] text-stone-400">{obs.quarterTerm}</div>
-                    </td>
-                    <td className="py-3 px-4 text-center font-mono font-bold text-sm text-stone-900">
-                      {obs.averageScore.toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
-                        {obs.overallRating}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          onClick={() => onSelectObservationForPrint(obs.id)}
-                          className="p-1.5 text-stone-700 hover:text-[#701628] hover:bg-stone-100 rounded transition-colors"
-                          title="Print Official DepEd Sheet"
+        <div className="space-y-6">
+          {(
+            [
+              {
+                term: 'Term 1' as SupervisionTerm,
+                title: 'Conduct New COT-PMES Observation Table — Term 1',
+                subtitle: 'First Term (CO1 / Term 1) Classroom Observation Tool (COT-PMES) Evaluations',
+                badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
+                headerBg: 'bg-sky-50/50',
+              },
+              {
+                term: 'Term 2' as SupervisionTerm,
+                title: 'Conduct New COT-PMES Observation Table — Term 2',
+                subtitle: 'Second Term (CO2 / Term 2) Classroom Observation Tool (COT-PMES) Evaluations',
+                badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+                headerBg: 'bg-amber-50/50',
+              },
+              {
+                term: 'Term 3' as SupervisionTerm,
+                title: 'Conduct New COT-PMES Observation Table — Term 3',
+                subtitle: 'Third Term (CO3 / Term 3) Classroom Observation Tool (COT-PMES) Evaluations',
+                badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                headerBg: 'bg-emerald-50/50',
+              },
+            ] as const
+          )
+            .filter((section) => selectedTerm === 'All' || selectedTerm === section.term)
+            .map((section) => {
+              const termObservations = cotPmesObservations.filter(
+                (obs) => normalizeRecordTerm(obs.quarterTerm, obs.date) === section.term
+              );
+
+              return (
+                <div
+                  key={section.term}
+                  className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-2xs"
+                >
+                  <div
+                    className={`px-4 py-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${section.headerBg}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-stone-900">{section.title}</h4>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${section.badgeClass}`}
                         >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        {isAdmin && (
-                          <button
-                            onClick={() => deleteObservation(obs.id)}
-                            className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
-                            title="Delete Record"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+                          {termObservations.length}{' '}
+                          {termObservations.length === 1 ? 'Record' : 'Records'}
+                        </span>
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                      <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
+                    </div>
+                    {!isTeacher && (
+                      <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setModalObservationType('cot-pmes');
+                            setQuarterTerm(section.term);
+                            setIsNewModalOpen(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-[#701628] border border-[#701628]/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Conduct COT-PMES ({section.term})</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider">
+                          <th className="py-3 px-4">COT Code</th>
+                          <th className="py-3 px-4">Date &amp; Time</th>
+                          <th className="py-3 px-4">Teacher Observed</th>
+                          <th className="py-3 px-4">Subject &amp; Section</th>
+                          <th className="py-3 px-4">Assigned Instructional Supervisor</th>
+                          <th className="py-3 px-4 text-center">Score (Scale 3-7)</th>
+                          <th className="py-3 px-4">DepEd Rating</th>
+                          <th className="py-3 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {termObservations.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                              No COT-PMES observation records logged for {section.term} yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          termObservations.map((obs) => (
+                            <tr key={obs.id} className="hover:bg-stone-50/80 transition-colors">
+                              <td className="py-3 px-4 font-mono font-bold text-[#701628]">
+                                {obs.observationNo}
+                              </td>
+                              <td className="py-3 px-4 text-stone-700">
+                                <div>{obs.date}</div>
+                                <div className="text-[10px] text-stone-400">
+                                  {obs.timeStart} - {obs.timeEnd}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="font-bold text-stone-900">{obs.teacherName}</div>
+                                <div className="text-[11px] text-stone-500">{obs.department}</div>
+                              </td>
+                              <td className="py-3 px-4 text-stone-700">
+                                <div className="font-medium">{obs.subjectTaught}</div>
+                                <div className="text-[11px] text-stone-500">{obs.gradeAndSection}</div>
+                              </td>
+                              <td className="py-3 px-4 text-stone-700">
+                                <div className="font-medium">
+                                  {resolveRecordSupervisorName(obs, teachers, supervisors)}
+                                </div>
+                                <div className="text-[10px] text-stone-400">{section.term}</div>
+                              </td>
+                              <td className="py-3 px-4 text-center font-mono font-bold text-sm text-stone-900">
+                                {obs.averageScore.toFixed(2)}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  {obs.overallRating}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => onSelectObservationForPrint(obs.id)}
+                                    className="p-1.5 text-stone-700 hover:text-[#701628] hover:bg-stone-100 rounded transition-colors"
+                                    title="Print Official DepEd Sheet"
+                                  >
+                                    <Printer className="w-4 h-4" />
+                                  </button>
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() => deleteObservation(obs.id)}
+                                      className="p-1.5 text-stone-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                      title="Delete Record"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </div>
 

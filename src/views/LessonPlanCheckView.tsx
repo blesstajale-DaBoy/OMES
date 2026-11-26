@@ -13,6 +13,8 @@ import {
   resolveActiveMentorForUser,
   resolveRecordMentor,
   getScopedTeachersForModal,
+  normalizeRecordTerm,
+  SupervisionTerm,
 } from '../utils/supervisionScope';
 import { printTableReportToPdf } from '../utils/printTablePdf';
 import {
@@ -74,6 +76,7 @@ export const LessonPlanCheckView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('All');
+  const [selectedPlanTermFilter, setSelectedPlanTermFilter] = useState<'ALL' | SupervisionTerm>('ALL');
   const [selectedSupervisorFilterId, setSelectedSupervisorFilterId] = useState('All');
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<LessonPlanCheck | null>(null);
@@ -604,7 +607,7 @@ export const LessonPlanCheckView: React.FC = () => {
     }
   };
 
-  const handleOpenSubmitModal = () => {
+  const handleOpenSubmitModal = (defaultTerm?: SupervisionTerm) => {
     setEditingPlan(null);
     const initialTeacher = isTeacher
       ? teachers.find((t) => t.fullName === currentUser?.fullName) || scopedTeachers[0] || teachers[0]
@@ -623,7 +626,10 @@ export const LessonPlanCheckView: React.FC = () => {
 
     setSupervisorId(sup?.id || '');
     setWeekNumber(9);
-    setQuarterTerm('Term 1');
+    setQuarterTerm(
+      defaultTerm ||
+        (selectedPlanTermFilter !== 'ALL' ? selectedPlanTermFilter : 'Term 1')
+    );
     setDriveUrl(sup?.driveUrl || '');
     setUploadedFileName('');
     setDriveFileId('');
@@ -752,16 +758,31 @@ export const LessonPlanCheckView: React.FC = () => {
     setPendingReplaceFile(null);
   };
 
-  const handlePrintLessonPlansTable = () => {
+  const handlePrintLessonPlansTable = (termFilter?: SupervisionTerm) => {
+    const plansToPrint = termFilter
+      ? filteredPlans.filter(
+          (lp) => normalizeRecordTerm(lp.quarterTerm, lp.dateSubmitted) === termFilter
+        )
+      : selectedPlanTermFilter !== 'ALL'
+      ? filteredPlans.filter(
+          (lp) =>
+            normalizeRecordTerm(lp.quarterTerm, lp.dateSubmitted) ===
+            selectedPlanTermFilter
+        )
+      : filteredPlans;
+
+    const termSubtitle =
+      termFilter || (selectedPlanTermFilter !== 'ALL' ? selectedPlanTermFilter : 'All Terms');
+
     printTableReportToPdf({
-      title: 'Daily Lesson Log (DLL) & Detailed Lesson Plan Verification Table',
-      subtitle: `DepEd Order No. 42, s. 2016 · Status Filter: ${selectedStatus}`,
+      title: `Daily Lesson Log (DLL) & Detailed Lesson Plan Verification Table (${termSubtitle})`,
+      subtitle: `DepEd Order No. 42, s. 2016 · Term: ${termSubtitle} · Status Filter: ${selectedStatus}`,
       schoolName: schoolProfile.schoolName,
       schoolId: schoolProfile.schoolId,
       address: schoolProfile.address,
       preparedBy: currentUser?.fullName || 'Instructional Supervisor',
       headers: [
-        'Code / Week',
+        'Code / Week & Term',
         'Teacher',
         'Subject & Lesson Topic',
         'Supervisor / Mentor',
@@ -769,7 +790,7 @@ export const LessonPlanCheckView: React.FC = () => {
         'Status',
         'Remarks & Feedback',
       ],
-      rows: filteredPlans.map((lp) => {
+      rows: plansToPrint.map((lp) => {
         const supName = resolveRecordSupervisorName(lp, teachers, supervisors);
         const mentorName =
           lp.mentorName || resolveRecordMentor(lp, teachers, mentors)?.fullName;
@@ -778,7 +799,7 @@ export const LessonPlanCheckView: React.FC = () => {
             ? `Mentor: ${mentorName}\nSupervisor: ${supName}`
             : `Supervisor: ${supName}${mentorName ? `\nMentor: ${mentorName}` : ''}`;
         return [
-          `${lp.checkCode || 'DLL'}\n${formatWeekOrCo(lp.weekNumber)} (${lp.quarterTerm})`,
+          `${lp.checkCode || 'DLL'}\n${formatWeekOrCo(lp.weekNumber)} (${normalizeRecordTerm(lp.quarterTerm, lp.dateSubmitted)})`,
           `${lp.teacherName}\n${lp.department}`,
           `${lp.subjectGrade}\n${lp.lessonTitle}`,
           evaluatorText,
@@ -810,7 +831,7 @@ export const LessonPlanCheckView: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2 self-start md:self-auto shrink-0">
           <button
-            onClick={handleOpenSubmitModal}
+            onClick={() => handleOpenSubmitModal()}
             className="flex items-center gap-1.5 px-3.5 py-2 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4 text-amber-300" />
@@ -876,24 +897,51 @@ export const LessonPlanCheckView: React.FC = () => {
         </div>
       </div>
 
-      {/* Lesson Plans Table */}
-      <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs">
-        <div className="px-5 py-3.5 bg-stone-50/80 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+      {/* Daily Lesson Log (DLL) & Detailed Lesson Plan Table — Categorized by Term 1, Term 2, Term 3 */}
+      <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-xs space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-stone-200">
           <div>
-            <h3 className="text-sm font-bold text-stone-900">
-              Daily Lesson Log (DLL) &amp; Detailed Lesson Plan Table
-            </h3>
-            <p className="text-[11px] text-stone-500">
-              Weekly Lesson Plan Checking · Aligned with ILAW &amp; DepEd Order No. 42, s. 2016
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-bold text-stone-900">
+                Daily Lesson Log (DLL) &amp; Detailed Lesson Plan Table
+              </h3>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
+                {filteredPlans.length} Total {filteredPlans.length === 1 ? 'Record' : 'Records'}
+              </span>
+            </div>
+            <p className="text-xs text-stone-500 mt-0.5">
+              Categorized by Term 1, Term 2, and Term 3 · Lesson plans submitted on a term automatically route to their respective Term table below
             </p>
           </div>
+
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold bg-[#701628]/10 text-[#701628]">
-              {filteredPlans.length} {filteredPlans.length === 1 ? 'Record' : 'Records'}
-            </span>
+            <div className="flex items-center gap-1 bg-stone-100 p-1 rounded-lg border border-stone-200">
+              {(
+                [
+                  { id: 'ALL', label: 'All Terms (Categorized)' },
+                  { id: 'Term 1', label: 'Term 1' },
+                  { id: 'Term 2', label: 'Term 2' },
+                  { id: 'Term 3', label: 'Term 3' },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSelectedPlanTermFilter(tab.id)}
+                  className={`px-2.5 py-1 rounded-md text-xs font-bold transition-colors cursor-pointer ${
+                    selectedPlanTermFilter === tab.id
+                      ? 'bg-[#701628] text-white shadow-2xs'
+                      : 'text-stone-600 hover:text-stone-900 hover:bg-stone-200/60'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <button
               type="button"
-              onClick={handlePrintLessonPlansTable}
+              onClick={() => handlePrintLessonPlansTable()}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white text-xs font-bold rounded-lg shadow-2xs transition-colors cursor-pointer"
               title="Print / Export Daily Lesson Log Table to PDF"
             >
@@ -902,198 +950,277 @@ export const LessonPlanCheckView: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider text-[10px]">
-                <th className="py-3.5 px-4">Code / Week</th>
-                <th className="py-3.5 px-4">Teacher</th>
-                <th className="py-3.5 px-4">Subject & Topic</th>
-                <th className="py-3.5 px-4">Assigned Supervisor & Drive</th>
-                <th className="py-3.5 px-4">Submitted / Checked</th>
-                <th className="py-3.5 px-4 text-center">DepEd Checklist</th>
-                <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {filteredPlans.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-10 text-center text-stone-500">
-                    No lesson plan checking records found matching criteria.
-                  </td>
-                </tr>
-              ) : (
-                filteredPlans.map((lp) => {
-                  const checkCount = [
-                    lp.checklist.melcAligned,
-                    lp.checklist.clearObjectives,
-                    lp.checklist.learningResourcesAdequate,
-                    lp.checklist.pedagogicalProceduresSequenced,
-                    lp.checklist.formativeAssessmentIncluded,
-                  ].filter(Boolean).length;
-                  const planSupervisor =
-                    supervisors.find((s) => s.id === lp.supervisorId) ||
-                    supervisors.find((s) => s.fullName === lp.supervisorName);
-                  const effectiveDriveLink =
-                    lp.driveUrl ||
-                    planSupervisor?.driveUrl ||
-                    'https://drive.google.com/drive/folders/1bnhs-sup-santos-dll-archive';
 
-                  return (
-                    <tr key={lp.id} className="hover:bg-amber-50/30 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="font-mono font-bold text-[#701628]">{lp.checkCode}</div>
-                        <div className="text-[11px] text-stone-500 font-medium">
-                          {formatWeekOrCo(lp.weekNumber)} · {lp.quarterTerm}
-                        </div>
-                      </td>
+        <div className="space-y-6">
+          {(
+            [
+              {
+                term: 'Term 1' as SupervisionTerm,
+                title: 'Daily Lesson Log (DLL) & Detailed Lesson Plan Table — Term 1',
+                subtitle: 'First Term Weekly Lesson Plan Submissions & ILAW / DO 42, s. 2016 Verification',
+                badgeClass: 'bg-sky-50 text-sky-800 border-sky-200',
+                headerBg: 'bg-sky-50/50',
+              },
+              {
+                term: 'Term 2' as SupervisionTerm,
+                title: 'Daily Lesson Log (DLL) & Detailed Lesson Plan Table — Term 2',
+                subtitle: 'Second Term Weekly Lesson Plan Submissions & Mid-Year Instructional Verification',
+                badgeClass: 'bg-amber-50 text-amber-800 border-amber-200',
+                headerBg: 'bg-amber-50/50',
+              },
+              {
+                term: 'Term 3' as SupervisionTerm,
+                title: 'Daily Lesson Log (DLL) & Detailed Lesson Plan Table — Term 3',
+                subtitle: 'Third Term Weekly Lesson Plan Submissions & Final Term Verification',
+                badgeClass: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+                headerBg: 'bg-emerald-50/50',
+              },
+            ] as const
+          )
+            .filter(
+              (section) =>
+                selectedPlanTermFilter === 'ALL' || selectedPlanTermFilter === section.term
+            )
+            .map((section) => {
+              const termPlans = filteredPlans.filter(
+                (lp) =>
+                  normalizeRecordTerm(lp.quarterTerm, lp.dateSubmitted) === section.term
+              );
 
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-stone-900">{lp.teacherName}</div>
-                        <div className="text-[11px] text-stone-500">{lp.department}</div>
-                      </td>
-
-                      <td className="py-3.5 px-4 max-w-xs">
-                        <div className="font-semibold text-stone-800">{lp.subjectGrade}</div>
-                        <div className="text-[11px] text-stone-600 truncate">{lp.lessonTitle}</div>
-                      </td>
-
-                      {/* Assigned Supervisor & Direct Google Drive View Button */}
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-stone-900">
-                          {planSupervisor ? planSupervisor.fullName : lp.supervisorName}
-                        </div>
-                        <div className="text-[10px] text-stone-500 mb-1.5 font-medium">
-                          {planSupervisor ? `${planSupervisor.position} · ${planSupervisor.department}` : 'Instructional Supervisor'}
-                        </div>
-                        {(lp.mentorName || lp.evaluatorRole === 'mentor') && (
-                          <div className="text-[10px] text-violet-800 font-semibold mb-1">
-                            Mentor: {lp.mentorName || resolveRecordMentor(lp, teachers, mentors)?.fullName}
-                          </div>
-                        )}
-                        {lp.uploadedFileName && (
-                          <div className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 mb-1 inline-flex items-center gap-1 max-w-[190px] truncate">
-                            <FileText className="w-3 h-3 text-emerald-700 shrink-0" />
-                            <span className="truncate">{lp.uploadedFileName}</span>
-                          </div>
-                        )}
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {lp.uploadedFileDataUrl && (
-                            <a
-                              href={lp.uploadedFileDataUrl}
-                              download={lp.uploadedFileName || 'Weekly_Lesson_Plan'}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-bold shadow-2xs transition-colors"
-                              title="Download uploaded lesson plan file"
-                            >
-                              <FileDown className="w-3.5 h-3.5 text-emerald-700" />
-                              <span>Download File</span>
-                            </a>
-                          )}
-                          {effectiveDriveLink ? (
-                            <a
-                              href={effectiveDriveLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-[11px] font-bold shadow-2xs transition-colors"
-                              title={`Open lesson plan uploaded in Google Drive of ${planSupervisor?.fullName || 'Assigned Supervisor'}`}
-                            >
-                              <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
-                              <span>View in Drive</span>
-                            </a>
-                          ) : (
-                            <span className="text-stone-400 text-[10px] italic">No Drive Link</span>
-                          )}
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-stone-600">
-                        <div>Sub: {lp.dateSubmitted}</div>
-                        <div className="text-[10px] text-stone-400 font-medium">
-                          {lp.dateChecked !== 'Pending' ? `Chk: ${lp.dateChecked}` : 'Pending check'}
-                        </div>
-                      </td>
-
-                      <td className="py-3.5 px-4 text-center">
+              return (
+                <div
+                  key={section.term}
+                  className="rounded-xl border border-stone-200 overflow-hidden bg-white shadow-2xs"
+                >
+                  <div
+                    className={`px-4 py-3 border-b border-stone-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${section.headerBg}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-stone-900">{section.title}</h4>
                         <span
-                          className={`inline-block font-mono text-xs font-bold px-2.5 py-0.5 rounded-full ${
-                            checkCount === 5
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              : 'bg-amber-50 text-amber-800 border border-amber-200'
-                          }`}
+                          className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold border ${section.badgeClass}`}
                         >
-                          {checkCount} / 5 Criteria
+                          {termPlans.length} {termPlans.length === 1 ? 'Record' : 'Records'}
                         </span>
-                      </td>
+                      </div>
+                      <p className="text-[11px] text-stone-500 mt-0.5">{section.subtitle}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintLessonPlansTable(section.term)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Print {section.term}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSubmitModal(section.term)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-50 text-[#701628] border border-[#701628]/30 rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Submit to {section.term}</span>
+                      </button>
+                    </div>
+                  </div>
 
-                      <td className="py-3.5 px-4">
-                        {lp.status === 'Approved' && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Approved
-                          </span>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-stone-50 border-b border-stone-200 text-stone-600 font-bold uppercase tracking-wider text-[10px]">
+                          <th className="py-3.5 px-4">Code / Week &amp; Term</th>
+                          <th className="py-3.5 px-4">Teacher</th>
+                          <th className="py-3.5 px-4">Subject &amp; Topic</th>
+                          <th className="py-3.5 px-4">Assigned Supervisor &amp; Drive</th>
+                          <th className="py-3.5 px-4">Submitted / Checked</th>
+                          <th className="py-3.5 px-4 text-center">DepEd Checklist</th>
+                          <th className="py-3.5 px-4">Status</th>
+                          <th className="py-3.5 px-4 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-stone-100">
+                        {termPlans.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="py-8 text-center text-stone-400">
+                              No lesson plan records logged for {section.term} yet. Click &ldquo;Submit to {section.term}&rdquo; to add a lesson plan for {section.term}.
+                            </td>
+                          </tr>
+                        ) : (
+                          termPlans.map((lp) => {
+                            const checkCount = [
+                              lp.checklist.melcAligned,
+                              lp.checklist.clearObjectives,
+                              lp.checklist.learningResourcesAdequate,
+                              lp.checklist.pedagogicalProceduresSequenced,
+                              lp.checklist.formativeAssessmentIncluded,
+                            ].filter(Boolean).length;
+                            const planSupervisor =
+                              supervisors.find((s) => s.id === lp.supervisorId) ||
+                              supervisors.find((s) => s.fullName === lp.supervisorName);
+                            const effectiveDriveLink =
+                              lp.driveUrl ||
+                              planSupervisor?.driveUrl ||
+                              'https://drive.google.com/drive/folders/1bnhs-sup-santos-dll-archive';
+
+                            return (
+                              <tr key={lp.id} className="hover:bg-amber-50/30 transition-colors">
+                                <td className="py-3.5 px-4">
+                                  <div className="font-mono font-bold text-[#701628]">{lp.checkCode}</div>
+                                  <div className="text-[11px] text-stone-500 font-medium">
+                                    {formatWeekOrCo(lp.weekNumber)} · {section.term}
+                                  </div>
+                                </td>
+
+                                <td className="py-3.5 px-4">
+                                  <div className="font-bold text-stone-900">{lp.teacherName}</div>
+                                  <div className="text-[11px] text-stone-500">{lp.department}</div>
+                                </td>
+
+                                <td className="py-3.5 px-4 max-w-xs">
+                                  <div className="font-semibold text-stone-800">{lp.subjectGrade}</div>
+                                  <div className="text-[11px] text-stone-600 truncate">{lp.lessonTitle}</div>
+                                </td>
+
+                                <td className="py-3.5 px-4">
+                                  <div className="font-bold text-stone-900">
+                                    {planSupervisor ? planSupervisor.fullName : lp.supervisorName}
+                                  </div>
+                                  <div className="text-[10px] text-stone-500 mb-1.5 font-medium">
+                                    {planSupervisor ? `${planSupervisor.position} · ${planSupervisor.department}` : 'Instructional Supervisor'}
+                                  </div>
+                                  {(lp.mentorName || lp.evaluatorRole === 'mentor') && (
+                                    <div className="text-[10px] text-violet-800 font-semibold mb-1">
+                                      Mentor: {lp.mentorName || resolveRecordMentor(lp, teachers, mentors)?.fullName}
+                                    </div>
+                                  )}
+                                  {lp.uploadedFileName && (
+                                    <div className="text-[10px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 mb-1 inline-flex items-center gap-1 max-w-[190px] truncate">
+                                      <FileText className="w-3 h-3 text-emerald-700 shrink-0" />
+                                      <span className="truncate">{lp.uploadedFileName}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    {lp.uploadedFileDataUrl && (
+                                      <a
+                                        href={lp.uploadedFileDataUrl}
+                                        download={lp.uploadedFileName || 'Weekly_Lesson_Plan'}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 rounded-lg text-[11px] font-bold shadow-2xs transition-colors"
+                                        title="Download uploaded lesson plan file"
+                                      >
+                                        <FileDown className="w-3.5 h-3.5 text-emerald-700" />
+                                        <span>Download File</span>
+                                      </a>
+                                    )}
+                                    {effectiveDriveLink ? (
+                                      <a
+                                        href={effectiveDriveLink}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-950 border border-amber-300 rounded-lg text-[11px] font-bold shadow-2xs transition-colors"
+                                        title={`Open lesson plan uploaded in Google Drive of ${planSupervisor?.fullName || 'Assigned Supervisor'}`}
+                                      >
+                                        <ExternalLink className="w-3.5 h-3.5 text-amber-700" />
+                                        <span>View in Drive</span>
+                                      </a>
+                                    ) : (
+                                      <span className="text-stone-400 text-[10px] italic">No Drive Link</span>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className="py-3.5 px-4 text-stone-600">
+                                  <div>Sub: {lp.dateSubmitted}</div>
+                                  <div className="text-[10px] text-stone-400 font-medium">
+                                    {lp.dateChecked !== 'Pending' ? `Chk: ${lp.dateChecked}` : 'Pending check'}
+                                  </div>
+                                </td>
+
+                                <td className="py-3.5 px-4 text-center">
+                                  <span
+                                    className={`inline-block font-mono text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                                      checkCount === 5
+                                        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                        : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                    }`}
+                                  >
+                                    {checkCount} / 5 Criteria
+                                  </span>
+                                </td>
+
+                                <td className="py-3.5 px-4">
+                                  {lp.status === 'Approved' && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                      Approved
+                                    </span>
+                                  )}
+                                  {lp.status === 'Needs Revision' && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                                      <AlertCircle className="w-3.5 h-3.5" />
+                                      Needs Revision
+                                    </span>
+                                  )}
+                                  {lp.status === 'Pending Inspection' && (
+                                    <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                      <Clock className="w-3.5 h-3.5" />
+                                      Pending Review
+                                    </span>
+                                  )}
+                                </td>
+
+                                <td className="py-3.5 px-4 text-right">
+                                  <div className="inline-flex items-center justify-end gap-1.5">
+                                    {!isTeacher ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenReview(lp)}
+                                        className="px-2.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white font-bold rounded-lg text-xs transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                                      >
+                                        Inspect &amp; Sign
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenReview(lp)}
+                                        className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold rounded-lg text-xs transition-colors border border-stone-200 cursor-pointer whitespace-nowrap"
+                                      >
+                                        View Feedback
+                                      </button>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenEditModal(lp)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-lg text-xs transition-colors cursor-pointer whitespace-nowrap"
+                                      title="Edit Weekly Lesson Plan (DLL)"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5 text-amber-700" />
+                                      <span>Edit</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setPlanToDelete(lp)}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg text-xs transition-colors cursor-pointer whitespace-nowrap"
+                                      title="Delete Weekly Lesson Plan (DLL)"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                      <span>Delete</span>
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })
                         )}
-                        {lp.status === 'Needs Revision' && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            Needs Revision
-                          </span>
-                        )}
-                        {lp.status === 'Pending Inspection' && (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                            <Clock className="w-3.5 h-3.5" />
-                            Pending Review
-                          </span>
-                        )}
-                      </td>
-
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="inline-flex items-center justify-end gap-1.5">
-                          {!isTeacher ? (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenReview(lp)}
-                              className="px-2.5 py-1.5 bg-[#701628] hover:bg-[#580e1c] text-white font-bold rounded-lg text-xs transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
-                            >
-                              Inspect & Sign
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenReview(lp)}
-                              className="px-2.5 py-1.5 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold rounded-lg text-xs transition-colors border border-stone-200 cursor-pointer whitespace-nowrap"
-                            >
-                              View Feedback
-                            </button>
-                          )}
-
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(lp)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-lg text-xs transition-colors cursor-pointer whitespace-nowrap"
-                            title="Edit Weekly Lesson Plan (DLL)"
-                          >
-                            <Pencil className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Edit</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setPlanToDelete(lp)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold rounded-lg text-xs transition-colors cursor-pointer whitespace-nowrap"
-                            title="Delete Weekly Lesson Plan (DLL)"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Delete</span>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </div>
 
@@ -1858,7 +1985,9 @@ export const LessonPlanCheckView: React.FC = () => {
                     }}
                     className="w-full border border-stone-300 rounded-xl p-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-[#701628]"
                   >
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((w) => (
+                    {[
+                      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+                    ].map((w) => (
                       <option key={w} value={w}>
                         Week {w}
                       </option>
