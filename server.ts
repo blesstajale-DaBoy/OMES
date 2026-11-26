@@ -96,17 +96,57 @@ const PMCF_FAR_RESPONSE_SCHEMA = {
 
 interface GeneratePmcfFarRequestBody {
   evaluationType?: unknown;
+  type?: unknown;
   date?: unknown;
   teacherName?: unknown;
   careerStage?: unknown;
   subjectGrade?: unknown;
+  teacher?: {
+    fullName?: unknown;
+    careerStage?: unknown;
+    position?: unknown;
+    subjectGrade?: unknown;
+  };
   indicatorScoresList?: unknown;
+  ratings?: unknown;
   observerNotes?: unknown;
+  notes?: unknown;
 }
 
 function sanitizeField(value: unknown, maxLen: number, fallback = ''): string {
   if (typeof value !== 'string') return fallback;
   return value.trim().slice(0, maxLen);
+}
+
+function normalizeRatingsInput(indicatorScoresList: unknown, ratings: unknown): string {
+  if (typeof indicatorScoresList === 'string' && indicatorScoresList.trim()) {
+    return sanitizeField(indicatorScoresList, 6000);
+  }
+  if (typeof ratings === 'string' && ratings.trim()) {
+    return sanitizeField(ratings, 6000);
+  }
+  if (Array.isArray(ratings) && ratings.length > 0) {
+    const formatted = ratings
+      .slice(0, 60)
+      .map((item) => {
+        if (typeof item === 'string') return `- ${item.trim()}`;
+        if (item && typeof item === 'object') {
+          const rec = item as { indicator?: unknown; rating?: unknown; comment?: unknown };
+          const ind = sanitizeField(rec.indicator, 200, 'Indicator');
+          const rat =
+            typeof rec.rating === 'number' || typeof rec.rating === 'string'
+              ? String(rec.rating).trim().slice(0, 80)
+              : 'N/A';
+          const cmt = sanitizeField(rec.comment, 300);
+          return `- ${ind}: ${rat}${cmt ? ` | Note: ${cmt}` : ''}`;
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+    if (formatted) return formatted.slice(0, 6000);
+  }
+  return 'No individual indicator scores provided.';
 }
 
 function isRetryableError(err: unknown): boolean {
@@ -167,18 +207,22 @@ async function startServer() {
       return;
     }
 
-    const evaluationType = sanitizeField(body.evaluationType, 160);
+    const evaluationType = sanitizeField(body.evaluationType ?? body.type, 160);
     const date = sanitizeField(body.date, 40, new Date().toISOString().slice(0, 10));
-    const teacherName = sanitizeField(body.teacherName, 160);
-    const careerStage = sanitizeField(body.careerStage, 120, 'Proficient');
-    const subjectGrade = sanitizeField(body.subjectGrade, 200, 'General Subject');
-    const indicatorScoresList = sanitizeField(
-      body.indicatorScoresList,
-      6000,
-      'No individual indicator scores provided.'
+    const teacherName = sanitizeField(body.teacherName ?? body.teacher?.fullName, 160);
+    const careerStage = sanitizeField(
+      body.careerStage ?? body.teacher?.careerStage ?? body.teacher?.position,
+      120,
+      'Proficient'
     );
+    const subjectGrade = sanitizeField(
+      body.subjectGrade ?? body.teacher?.subjectGrade,
+      200,
+      'General Subject'
+    );
+    const indicatorScoresList = normalizeRatingsInput(body.indicatorScoresList, body.ratings);
     const observerNotes = sanitizeField(
-      body.observerNotes,
+      body.observerNotes ?? body.notes,
       4000,
       'No additional observer notes provided.'
     );

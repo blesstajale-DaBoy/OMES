@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useAuth } from './AuthContext';
+import { generatePmcfAndFar } from '../services/geminiService';
 import {
   SchoolProfile,
   Teacher,
@@ -1433,53 +1434,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Call backend POST /api/generate-pmcf-far (Gemini Structured Outputs)
+  // Call backend POST /api/generate-pmcf-far via geminiService (Gemini Structured Outputs)
   const fetchGeminiPmcfAndFar = async (draft: AiPmcfFarDraftSession) => {
     const requestId = ++activeAiRequestIdRef.current;
     try {
-      const response = await fetch('/api/generate-pmcf-far', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          evaluationType: draft.evaluationType,
-          date: draft.date,
-          teacherName: draft.teacherName,
-          careerStage: draft.careerStage,
-          subjectGrade: draft.subjectGrade,
-          indicatorScoresList: draft.indicatorScoresList,
-          observerNotes: draft.observerNotes,
-        }),
+      const result = await generatePmcfAndFar({
+        evaluationType: draft.evaluationType,
+        date: draft.date,
+        teacherName: draft.teacherName,
+        careerStage: draft.careerStage,
+        subjectGrade: draft.subjectGrade,
+        indicatorScoresList: draft.indicatorScoresList,
+        observerNotes: draft.observerNotes,
       });
 
-      const payload = await response.json().catch(() => ({}));
       if (activeAiRequestIdRef.current !== requestId) return;
-
-      if (!response.ok) {
-        const errMsg =
-          typeof payload?.error === 'string' && payload.error.trim()
-            ? payload.error
-            : `Gemini API request failed with status ${response.status}.`;
-        setActiveAiDraft((prev) =>
-          prev && prev.sourceRecordId === draft.sourceRecordId
-            ? { ...prev, loading: false, error: errMsg, generated: null }
-            : prev
-        );
-        return;
-      }
-
-      if (!payload?.pmcf || !payload?.far) {
-        setActiveAiDraft((prev) =>
-          prev && prev.sourceRecordId === draft.sourceRecordId
-            ? {
-                ...prev,
-                loading: false,
-                error: 'Server returned an incomplete PMCF/FAR JSON structure.',
-                generated: null,
-              }
-            : prev
-        );
-        return;
-      }
 
       setActiveAiDraft((prev) =>
         prev && prev.sourceRecordId === draft.sourceRecordId
@@ -1487,10 +1456,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ...prev,
               loading: false,
               error: null,
-              generated: {
-                pmcf: payload.pmcf,
-                far: payload.far,
-              },
+              generated: result,
             }
           : prev
       );
@@ -1498,7 +1464,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (activeAiRequestIdRef.current !== requestId) return;
       const errMsg =
         err instanceof Error
-          ? `Could not connect to the Gemini generation endpoint: ${err.message}`
+          ? err.message
           : 'Network error while generating PMCF and FAR.';
       setActiveAiDraft((prev) =>
         prev && prev.sourceRecordId === draft.sourceRecordId
