@@ -4,7 +4,7 @@ import type { Request, Response } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -187,11 +187,14 @@ async function startServer() {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '256kb' }));
 
-  app.get('/api/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok', service: 'bnhs-omes-api' });
-  });
+  const healthHandler = (_req: Request, res: Response) => {
+    res.json({ status: 'ok', service: 'bnhs-omes-api', model: MODEL_NAME });
+  };
 
-  app.post('/api/generate-pmcf-far', async (req: Request, res: Response) => {
+  app.get(['/api/health', '/api/health/'], healthHandler);
+  app.get(/^\/.+\/api\/health\/?$/, healthHandler);
+
+  const generatePmcfFarHandler = async (req: Request, res: Response) => {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
       res.status(503).json({
@@ -263,6 +266,9 @@ async function startServer() {
             systemInstruction: PMCF_FAR_SYSTEM_INSTRUCTION,
             responseMimeType: 'application/json',
             responseSchema: PMCF_FAR_RESPONSE_SCHEMA,
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.LOW,
+            },
           },
         })
       );
@@ -346,10 +352,27 @@ async function startServer() {
         return;
       }
 
+      if (status === 404 || errMessage.includes('NOT_FOUND')) {
+        res.status(502).json({
+          error: `Gemini model "${MODEL_NAME}" was not found or is temporarily unavailable. Please retry in a moment.`,
+        });
+        return;
+      }
+
       res.status(502).json({
         error: `Failed to generate PMCF and FAR via Gemini API: ${errMessage}`,
       });
     }
+  };
+
+  app.post(['/api/generate-pmcf-far', '/api/generate-pmcf-far/'], generatePmcfFarHandler);
+  app.post(/^\/.+\/api\/generate-pmcf-far\/?$/, generatePmcfFarHandler);
+
+  // Ensure unmatched /api/* requests always return structured JSON instead of HTML 404s
+  app.all('/api/*', (req: Request, res: Response) => {
+    res.status(404).json({
+      error: `API endpoint not found: ${req.method} ${req.originalUrl}`,
+    });
   });
 
   const distDir = path.resolve(__dirname, 'dist');

@@ -131,7 +131,27 @@ export class GeminiServiceError extends Error {
   }
 }
 
-const GENERATE_ENDPOINT = '/api/generate-pmcf-far';
+const GENERATE_ENDPOINT_PATH = 'api/generate-pmcf-far';
+const HEALTH_ENDPOINT_PATH = 'api/health';
+
+function getCandidateApiUrls(apiPath: string): string[] {
+  const rootUrl = `/${apiPath.replace(/^\/+/, '')}`;
+  const urls: string[] = [rootUrl];
+
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      const baseResolved = new URL(apiPath.replace(/^\/+/, ''), document.baseURI).toString();
+      const sameOriginPath = new URL(baseResolved).pathname;
+      if (sameOriginPath !== rootUrl && !urls.includes(baseResolved)) {
+        urls.push(baseResolved);
+      }
+    } catch {
+      // Ignore malformed baseURI
+    }
+  }
+
+  return urls;
+}
 
 function formatRatingsList(ratings: EvaluationRatingItem[] | string): string {
   if (typeof ratings === 'string') {
@@ -177,27 +197,49 @@ export async function evaluateWithGemini(
     );
   }
 
-  let response: Response;
-  try {
-    response = await fetch(GENERATE_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal,
-      body: JSON.stringify({
-        evaluationType,
-        date,
-        teacherName,
-        careerStage,
-        subjectGrade,
-        indicatorScoresList,
-        observerNotes,
-      }),
-    });
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw err;
+  const requestBody = JSON.stringify({
+    evaluationType,
+    date,
+    teacherName,
+    careerStage,
+    subjectGrade,
+    indicatorScoresList,
+    observerNotes,
+  });
+
+  const candidateUrls = getCandidateApiUrls(GENERATE_ENDPOINT_PATH);
+  let response: Response | null = null;
+  let lastNetworkError: unknown = null;
+
+  for (let i = 0; i < candidateUrls.length; i++) {
+    const endpointUrl = candidateUrls[i];
+    try {
+      const res = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        signal,
+        body: requestBody,
+      });
+
+      if (res.status === 404 && i < candidateUrls.length - 1) {
+        continue;
+      }
+
+      response = res;
+      break;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw err;
+      }
+      lastNetworkError = err;
     }
-    const detail = err instanceof Error ? err.message : 'Network error';
+  }
+
+  if (!response) {
+    const detail = lastNetworkError instanceof Error ? lastNetworkError.message : 'Network error';
     throw new GeminiServiceError(
       `Could not connect to the Gemini generation service: ${detail}`,
       0
@@ -210,6 +252,8 @@ export async function evaluateWithGemini(
     const serverMsg =
       payload && typeof payload.error === 'string' && payload.error.trim()
         ? payload.error.trim()
+        : response.status === 404
+        ? 'The Gemini API endpoint (/api/generate-pmcf-far) was not found on the server. Please refresh the app or restart the preview server and retry.'
         : `Gemini API request failed with status ${response.status}.`;
     throw new GeminiServiceError(serverMsg, response.status);
   }
@@ -269,10 +313,14 @@ export async function generatePmcfAndFar(
  * Checks whether the backend OMES Gemini API server is reachable.
  */
 export async function checkGeminiServiceHealth(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/health');
-    return res.ok;
-  } catch {
-    return false;
+  const urls = getCandidateApiUrls(HEALTH_ENDPOINT_PATH);
+  for (const url of urls) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) return true;
+    } catch {
+      // Try next candidate URL
+    }
   }
+  return false;
 }
