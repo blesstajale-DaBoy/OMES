@@ -9,7 +9,22 @@ import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = Number(process.env.PORT) || 3000;
+function resolvePort(): number {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg === '--port' && args[i + 1]) {
+      const parsed = Number(args[i + 1]);
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    } else if (arg.startsWith('--port=')) {
+      const parsed = Number(arg.slice('--port='.length));
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+  }
+  return Number(process.env.PORT) || 3000;
+}
+
+const PORT = resolvePort();
 const MODEL_NAME = 'gemini-4-hydrogen';
 
 const PMCF_FAR_SYSTEM_INSTRUCTION = `You are an expert Instructional Supervisor and DepEd Performance Management and Evaluation System (PMES) specialist integrated into an Online Monitoring and Evaluation System (OMES).
@@ -365,6 +380,9 @@ async function startServer() {
     }
   };
 
+  app.options(['/api/generate-pmcf-far', '/api/generate-pmcf-far/'], (_req: Request, res: Response) => {
+    res.sendStatus(204);
+  });
   app.post(['/api/generate-pmcf-far', '/api/generate-pmcf-far/'], generatePmcfFarHandler);
   app.post(/^\/.+\/api\/generate-pmcf-far\/?$/, generatePmcfFarHandler);
 

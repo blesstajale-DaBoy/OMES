@@ -209,13 +209,16 @@ export async function evaluateWithGemini(
 
   const candidateUrls = getCandidateApiUrls(GENERATE_ENDPOINT_PATH);
   let response: Response | null = null;
+  let attemptedUrl = candidateUrls[0];
   let lastNetworkError: unknown = null;
 
   for (let i = 0; i < candidateUrls.length; i++) {
     const endpointUrl = candidateUrls[i];
+    attemptedUrl = endpointUrl;
     try {
       const res = await fetch(endpointUrl, {
         method: 'POST',
+        credentials: 'same-origin',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
@@ -249,11 +252,15 @@ export async function evaluateWithGemini(
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
+    const originHint =
+      typeof window !== 'undefined' && window.location?.origin
+        ? `${window.location.origin}${attemptedUrl.startsWith('/') ? attemptedUrl : ''}`
+        : attemptedUrl;
     const serverMsg =
       payload && typeof payload.error === 'string' && payload.error.trim()
         ? payload.error.trim()
         : response.status === 404
-        ? 'The Gemini API endpoint (/api/generate-pmcf-far) was not found on the server. Please refresh the app or restart the preview server and retry.'
+        ? `The Gemini API endpoint (${originHint}) returned 404 because this deployment is serving static files without the Express backend server. Please use the live full-stack preview or redeploy with the Node server.`
         : `Gemini API request failed with status ${response.status}.`;
     throw new GeminiServiceError(serverMsg, response.status);
   }
