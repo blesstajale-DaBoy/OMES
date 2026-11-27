@@ -25,9 +25,10 @@ function resolvePort(): number {
 }
 
 const PORT = resolvePort();
-const MODEL_NAME = 'gemini-4-hydrogen';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-4-hydrogen';
+const FALLBACK_MODEL = 'gemini-2.5-flash';
 
-const PMCF_FAR_SYSTEM_INSTRUCTION = `You are an expert Instructional Supervisor and DepEd Performance Management and Evaluation System (PMES) specialist integrated into an Online Monitoring and Evaluation System (OMES).
+const PMCF_FAR_SYSTEM_INSTRUCTION = `You are an expert DepEd Master Teacher, Instructional Supervisor, and Performance Management and Evaluation System (PMES) specialist integrated into an Online Monitoring and Evaluation System (OMES).
 
 Whenever an evaluation record is submitted (COT-PMES, Lesson Plan, Summative/Formative Assessment, Classroom Observation, Fleeting Observation, or IMs/LMs), analyze the ratings and observer notes to generate two official outputs:
 1. Performance Monitoring and Coaching Form (PMCF)
@@ -203,7 +204,7 @@ async function startServer() {
   app.use(express.json({ limit: '256kb' }));
 
   const healthHandler = (_req: Request, res: Response) => {
-    res.json({ status: 'ok', service: 'bnhs-omes-api', model: MODEL_NAME });
+    res.json({ status: 'ok', service: 'bnhs-omes-api', model: PRIMARY_MODEL });
   };
 
   app.get(['/api/health', '/api/health/'], healthHandler);
@@ -212,7 +213,7 @@ async function startServer() {
   const generatePmcfFarHandler = async (req: Request, res: Response) => {
     const apiKey = process.env.GEMINI_API_KEY?.trim();
     if (!apiKey || apiKey === 'MY_GEMINI_API_KEY') {
-      res.status(503).json({
+      res.status(500).json({
         error:
           'Gemini API key is not configured on the server. Please configure GEMINI_API_KEY in Settings > Secrets.',
       });
@@ -273,24 +274,43 @@ async function startServer() {
         },
       });
 
-      const response = await generateWithRetry(() =>
-        ai.models.generateContent({
-          model: MODEL_NAME,
-          contents: userPrompt,
-          config: {
-            systemInstruction: PMCF_FAR_SYSTEM_INSTRUCTION,
-            responseMimeType: 'application/json',
-            responseSchema: PMCF_FAR_RESPONSE_SCHEMA,
-            thinkingConfig: {
-              thinkingLevel: ThinkingLevel.LOW,
+      const callModel = (model: string) =>
+        generateWithRetry(() =>
+          ai.models.generateContent({
+            model,
+            contents: userPrompt,
+            config: {
+              systemInstruction: PMCF_FAR_SYSTEM_INSTRUCTION,
+              responseMimeType: 'application/json',
+              responseSchema: PMCF_FAR_RESPONSE_SCHEMA,
+              ...(model.startsWith('gemini-4')
+                ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+                : {}),
             },
-          },
-        })
-      );
+          })
+        );
+
+      let response;
+      try {
+        response = await callModel(PRIMARY_MODEL);
+      } catch (primaryErr: unknown) {
+        const primaryStatus =
+          (primaryErr as { status?: number; statusCode?: number })?.status ??
+          (primaryErr as { status?: number; statusCode?: number })?.statusCode;
+        const primaryMsg = primaryErr instanceof Error ? primaryErr.message : '';
+        if (
+          PRIMARY_MODEL !== FALLBACK_MODEL &&
+          (primaryStatus === 404 || primaryMsg.includes('NOT_FOUND'))
+        ) {
+          response = await callModel(FALLBACK_MODEL);
+        } else {
+          throw primaryErr;
+        }
+      }
 
       const rawText = (response.text ?? '').trim();
       if (!rawText) {
-        res.status(502).json({
+        res.status(500).json({
           error: 'Gemini returned an empty response while generating PMCF and FAR.',
         });
         return;
@@ -314,14 +334,14 @@ async function startServer() {
       try {
         parsed = JSON.parse(rawText);
       } catch {
-        res.status(502).json({
+        res.status(500).json({
           error: 'Gemini returned malformed JSON. Please retry generation.',
         });
         return;
       }
 
       if (!parsed.pmcf || !parsed.far) {
-        res.status(502).json({
+        res.status(500).json({
           error: 'Gemini response did not include both pmcf and far fields. Please retry.',
         });
         return;
@@ -368,13 +388,13 @@ async function startServer() {
       }
 
       if (status === 404 || errMessage.includes('NOT_FOUND')) {
-        res.status(502).json({
-          error: `Gemini model "${MODEL_NAME}" was not found or is temporarily unavailable. Please retry in a moment.`,
+        res.status(500).json({
+          error: `Gemini model "${PRIMARY_MODEL}" was not found or is temporarily unavailable. Please retry in a moment.`,
         });
         return;
       }
 
-      res.status(502).json({
+      res.status(500).json({
         error: `Failed to generate PMCF and FAR via Gemini API: ${errMessage}`,
       });
     }

@@ -419,10 +419,10 @@ export const AiPmcfFarReviewModal: React.FC = () => {
               <Loader2 className="w-6 h-6 text-[#701628] animate-spin shrink-0" />
               <div>
                 <div className="font-bold text-stone-900 text-sm">
-                  Analyzing evaluation ratings &amp; notes with Gemini Structured Outputs...
+                  Generating PMCF &amp; FAR...
                 </div>
                 <p className="text-xs text-stone-600 mt-0.5">
-                  Drafting PPST-aligned Performance Monitoring and Coaching Form (PMCF) and 4-column Findings, Analysis, and Recommendations (FAR) for {activeAiDraft.teacherName}.
+                  Analyzing evaluation ratings and observer notes with Gemini Structured Outputs to draft PPST-aligned PMCF and 4-column FAR entries for {activeAiDraft.teacherName}.
                 </p>
               </div>
             </div>

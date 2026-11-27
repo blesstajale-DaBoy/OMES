@@ -9,7 +9,7 @@ export default function handler(_req: IncomingMessage, res: VercelResponseLike):
   const payload = {
     status: 'ok',
     service: 'bnhs-omes-api',
-    model: 'gemini-4-hydrogen',
+    model: process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash',
     configured: Boolean(
       process.env.GEMINI_API_KEY?.trim() &&
         process.env.GEMINI_API_KEY.trim() !== 'MY_GEMINI_API_KEY'

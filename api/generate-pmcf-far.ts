@@ -1,9 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
 
-const MODEL_NAME = 'gemini-4-hydrogen';
+const PRIMARY_MODEL = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+const FALLBACK_MODEL = 'gemini-4-hydrogen';
 
-const PMCF_FAR_SYSTEM_INSTRUCTION = `You are an expert Instructional Supervisor and DepEd Performance Management and Evaluation System (PMES) specialist integrated into an Online Monitoring and Evaluation System (OMES).
+const PMCF_FAR_SYSTEM_INSTRUCTION = `You are an expert DepEd Master Teacher, Instructional Supervisor, and Performance Management and Evaluation System (PMES) specialist integrated into an Online Monitoring and Evaluation System (OMES).
 
 Whenever an evaluation record is submitted (COT-PMES, Lesson Plan, Summative/Formative Assessment, Classroom Observation, Fleeting Observation, or IMs/LMs), analyze the ratings and observer notes to generate two official outputs:
 1. Performance Monitoring and Coaching Form (PMCF)
@@ -311,20 +312,39 @@ export default async function handler(
       },
     });
 
-    const response = await generateWithRetry(() =>
-      ai.models.generateContent({
-        model: MODEL_NAME,
-        contents: userPrompt,
-        config: {
-          systemInstruction: PMCF_FAR_SYSTEM_INSTRUCTION,
-          responseMimeType: 'application/json',
-          responseSchema: PMCF_FAR_RESPONSE_SCHEMA,
-          thinkingConfig: {
-            thinkingLevel: ThinkingLevel.LOW,
+    const callModel = (model: string) =>
+      generateWithRetry(() =>
+        ai.models.generateContent({
+          model,
+          contents: userPrompt,
+          config: {
+            systemInstruction: PMCF_FAR_SYSTEM_INSTRUCTION,
+            responseMimeType: 'application/json',
+            responseSchema: PMCF_FAR_RESPONSE_SCHEMA,
+            ...(model.startsWith('gemini-4')
+              ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+              : {}),
           },
-        },
-      })
-    );
+        })
+      );
+
+    let response;
+    try {
+      response = await callModel(PRIMARY_MODEL);
+    } catch (primaryErr: unknown) {
+      const primaryStatus =
+        (primaryErr as { status?: number; statusCode?: number })?.status ??
+        (primaryErr as { status?: number; statusCode?: number })?.statusCode;
+      const primaryMsg = primaryErr instanceof Error ? primaryErr.message : '';
+      if (
+        PRIMARY_MODEL !== FALLBACK_MODEL &&
+        (primaryStatus === 404 || primaryMsg.includes('NOT_FOUND'))
+      ) {
+        response = await callModel(FALLBACK_MODEL);
+      } else {
+        throw primaryErr;
+      }
+    }
 
     const rawText = (response.text ?? '').trim();
     if (!rawText) {
@@ -406,8 +426,8 @@ export default async function handler(
     }
 
     if (status === 404 || errMessage.includes('NOT_FOUND')) {
-      sendJson(res, 502, {
-        error: `Gemini model "${MODEL_NAME}" was not found or is temporarily unavailable. Please retry in a moment.`,
+      sendJson(res, 500, {
+        error: `Gemini model "${PRIMARY_MODEL}" was not found or is temporarily unavailable. Please retry in a moment.`,
       });
       return;
     }
